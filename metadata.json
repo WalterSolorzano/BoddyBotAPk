@@ -1,0 +1,6 @@
+{
+  "name": "Uni Buddy",
+  "description": "Tu compañero para organizar la universidad sin estrés con predictor de llegada tarde, control de asistencia y calculadora de notas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,64 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Background glow / Shadow for depth -->
+    <path
+        android:fillColor="#1A0061A4"
+        android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0" />
+
+    <!-- Cute Companion Mascot (Shield Shape + Grad Cap) -->
+    <!-- Base Shield of Wisdom -->
+    <path
+        android:fillColor="#0061A4"
+        android:pathData="M30,38 L78,38 C78,38 82,64 54,82 C26,64 30,38 30,38 Z" />
+
+    <!-- Innermost book/pages icon or grad shield lines -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,44 L70,54 L54,64 L38,54 Z" />
+
+    <!-- Graduation Cap Top Diamond (floating on top of shield) -->
+    <path
+        android:fillColor="#00497E"
+        android:pathData="M54,22 L86,35 L54,48 L22,35 Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#FFFFFF" />
+
+    <!-- Graduation Cap Cap Base -->
+    <path
+        android:fillColor="#001D36"
+        android:pathData="M38,39 L38,48 C38,54 54,58 54,58 C54,58 70,54 70,48 L70,39"
+        android:strokeWidth="1.5"
+        android:strokeColor="#FFFFFF" />
+
+    <!-- Graduation Cap Tassel -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,35 L76,38 L76,56"
+        android:strokeWidth="1.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+
+    <!-- Stylized Mascot Smile / Eyes overlay inside the shield overlay -->
+    <path
+         android:fillColor="#001D36"
+         android:pathData="M46,51 A2,2 0,1 1,42,51 A2,2 0,1 1,46,51 Z M66,51 A2,2 0,1 1,62,51 A2,2 0,1 1,66,51 Z" />
+        
+    <!-- Cute friendly curved line for smile -->
+    <path
+        android:strokeColor="#001D36"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round"
+        android:pathData="M51,55 Q54,58 57,55" />
+
+    <!-- Sparkle star representing academic companion success -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M84,18 L86,22 L90,24 L86,26 L84,30 L82,26 L78,24 L82,22 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M22,74 L23,76 L25,77 L23,78 L22,80 L21,78 L19,77 L21,76 Z" />
+</vector>
