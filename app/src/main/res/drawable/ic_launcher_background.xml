@@ -5,12 +5,13 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     
-    <!-- Arctic Background with better contrast -->
+    <!-- Arctic Background with high contrast -->
     <path
-        android:fillColor="#0288D1"
+        android:fillColor="#01579B"
         android:pathData="M0,0h108v108h-108z" />
         
+    <!-- Iceberg/Snow -->
     <path
         android:fillColor="#E1F5FE"
-        android:pathData="M0,80l20,-20l30,10l40,-30l18,20v48h-108z" />
+        android:pathData="M0,75l25,-15l35,15l48,-30l0,63l-108,0z" />
 </vector>

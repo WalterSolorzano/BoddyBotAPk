@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "com.aistudio.unibuddy.qywvsp"
   compileSdk = 35
 
   defaultConfig {
