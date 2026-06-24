@@ -269,6 +269,18 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
+                .addCallback(object : RoomDatabase.Callback() {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        super.onCreate(db)
+                        // Prepopulate database in a background thread
+                        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+                        scope.launch {
+                            getDatabase(context).uniBuddyDao().insertSetting(KeyValueSetting("onboarding_completed", "false"))
+                            getDatabase(context).uniBuddyDao().insertSetting(KeyValueSetting("username", "Estudiante"))
+                            getDatabase(context).uniBuddyDao().insertSetting(KeyValueSetting("semester_state", "Vacaciones"))
+                        }
+                    }
+                })
                 .build()
                 INSTANCE = instance
                 instance

@@ -1380,7 +1380,9 @@ fun DashboardScreen(
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             Button(
                                 onClick = {
-                                    viewModel.registerAttendanceLog(showAutoAttendancePrompt!!.id, true)
+                                    showAutoAttendancePrompt?.let { 
+                                        viewModel.registerAttendanceLog(it.id, true)
+                                    }
                                     showAutoAttendancePrompt = null
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
@@ -4192,7 +4194,7 @@ fun SubjectGradesScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: ()
     val remainingPercentageToAcknowledge = (100.0 - completedPercentageSum).coerceAtLeast(0.0)
 
     val historicAverage = if (completedExams.isNotEmpty()) {
-        completedExams.map { it.grade!! }.average()
+        completedExams.map { it.grade ?: 0.0 }.average()
     } else {
         null
     }

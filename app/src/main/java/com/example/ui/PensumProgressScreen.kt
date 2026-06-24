@@ -29,7 +29,10 @@ fun PensumProgressScreen(viewModel: UniBuddyViewModel) {
     val progressPercent = if (totalSubjects > 0) (passedCount.toFloat() / totalSubjects) * 100 else 0f
 
     val remainingSubjects = totalSubjects - passedCount
-    val avgSubjPerSem = if (allSubjects.isNotEmpty()) allSubjects.size.toFloat() / allSubjects.map { it.semester }.maxOrNull()!! else 5f
+    val avgSubjPerSem = if (allSubjects.isNotEmpty()) {
+        val maxSem = allSubjects.map { it.semester }.maxOrNull() ?: 1
+        allSubjects.size.toFloat() / maxSem.toFloat()
+    } else 5f
     val estimatedRemainingSemesters = kotlin.math.ceil(remainingSubjects / avgSubjPerSem).toInt()
     val estimatedRemainingYears = estimatedRemainingSemesters / 2f
 
