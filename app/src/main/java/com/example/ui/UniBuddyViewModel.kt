@@ -18,14 +18,35 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         val db = AppDatabase.getDatabase(application)
         repository = UniBuddyRepository(db)
         
-        // Populate with realistic database entries on first start if empty
         viewModelScope.launch {
-            repository.subjects.first().let { list ->
-                if (list.isEmpty()) {
-                    prepopulateDatabase()
-                }
+            // Load settings
+            repository.getSetting("origin")?.let { _origin.value = it }
+            repository.getSetting("destination")?.let { _destination.value = it }
+            repository.getSetting("base_travel_time")?.let { _baseTravelTime.value = it.toIntOrNull() ?: 25 }
+            repository.getSetting("username")?.let { _username.value = it }
+            repository.getSetting("google_maps_api_key")?.let { _googleMapsApiKey.value = it }
+            repository.getSetting("onboarding_completed")?.let { _isOnboardingCompleted.value = it.toBoolean() }
+            repository.getSetting("arrival_margin_preference")?.let { _arrivalMarginPreference.value = it }
+            repository.getSetting("weather_desc")?.let { _weatherDescription.value = it }
+            repository.getSetting("is_raining")?.let { _isRaining.value = it.toBoolean() }
+            repository.getSetting("semester_start_date")?.let { _semesterStartDate.value = it.toLongOrNull() }
+            repository.getSetting("passed_subjects")?.let { _passedSubjects.value = it.split(",").filter { s -> s.isNotEmpty() }.toSet() }
+            
+            // Populate with defaults if empty
+            if (repository.getSetting("onboarding_completed") == null) {
+                prepopulateDatabase()
             }
+            
+            refreshWeather()
         }
+    }
+
+    private suspend fun prepopulateDatabase() {
+        repository.saveSetting("onboarding_completed", "false")
+        repository.saveSetting("username", "Estudiante")
+        repository.saveSetting("origin", "Casa")
+        repository.saveSetting("destination", "Facultad")
+        repository.saveSetting("semester_state", "Vacaciones")
     }
 
     // Dynamic UI State
@@ -164,28 +185,6 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
 
     private val _isOnboardingCompleted = MutableStateFlow(false)
     val isOnboardingCompleted: StateFlow<Boolean> = _isOnboardingCompleted.asStateFlow()
-
-    init {
-        // Load settings from database
-        viewModelScope.launch {
-            repository.getSetting("origin")?.let { _origin.value = it }
-            repository.getSetting("destination")?.let { _destination.value = it }
-            repository.getSetting("base_travel_time")?.let { _baseTravelTime.value = it.toIntOrNull() ?: 25 }
-            repository.getSetting("username")?.let { _username.value = it }
-            repository.getSetting("google_maps_api_key")?.let { _googleMapsApiKey.value = it }
-            repository.getSetting("onboarding_completed")?.let { _isOnboardingCompleted.value = it.toBoolean() }
-            repository.getSetting("arrival_margin_preference")?.let { _arrivalMarginPreference.value = it }
-            repository.getSetting("weather_desc")?.let { _weatherDescription.value = it }
-            repository.getSetting("is_raining")?.let { _isRaining.value = it.toBoolean() }
-            repository.getSetting("semester_start_date")?.let { _semesterStartDate.value = it.toLongOrNull() }
-            repository.getSetting("passed_subjects")?.let { _passedSubjects.value = it.split(",").filter { s -> s.isNotEmpty() }.toSet() }
-            refreshWeather()
-        }
-    }
-
-    private suspend fun prepopulateDatabase() {
-        // No prepopulated data on clean installation. Left empty for clean export.
-    }
 
     // Methods
     fun updateOnboardingStatus(completed: Boolean) {
