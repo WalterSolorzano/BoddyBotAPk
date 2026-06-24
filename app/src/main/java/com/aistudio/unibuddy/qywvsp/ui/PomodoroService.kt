@@ -96,11 +96,11 @@ class PomodoroService : Service() {
                 val title = if (isWorkMode) "¡Focus Completado!" else "¡Descanso Terminado!"
                 val text = if (isWorkMode) "Buen trabajo. Es hora de un descanso." else "Volvamos a estudiar."
                 
-                val notification = NotificationCompat.Builder(this@PomodoroService, CHANNEL_ID)
+                val notification = androidx.core.app.NotificationCompat.Builder(this@PomodoroService, CHANNEL_ID)
                     .setContentTitle(title)
                     .setContentText(text)
-                    .setSmallIcon(R.drawable.ic_launcher_foreground)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setSmallIcon(com.aistudio.unibuddy.qywvsp.R.drawable.ic_launcher_foreground)
+                    .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
                     .build()
                 
                 notificationManager.notify(NOTIFICATION_ID + 1, notification)
@@ -142,7 +142,7 @@ class PomodoroService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText("Tiempo restante: $timeStr")
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
