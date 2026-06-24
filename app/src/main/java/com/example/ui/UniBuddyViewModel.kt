@@ -51,11 +51,95 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     private val _destination = MutableStateFlow("Facultad de Ingeniería")
     val destination: StateFlow<String> = _destination.asStateFlow()
 
+    private val _passedSubjects = MutableStateFlow<Set<String>>(emptySet())
+    val passedSubjects: StateFlow<Set<String>> = _passedSubjects.asStateFlow()
+
     private val _baseTravelTime = MutableStateFlow(25) // in minutes
     val baseTravelTime: StateFlow<Int> = _baseTravelTime.asStateFlow()
 
     private val _isRaining = MutableStateFlow(false)
     val isRaining: StateFlow<Boolean> = _isRaining.asStateFlow()
+
+    private val _semesterStartDate = MutableStateFlow<Long?>(null)
+    val semesterStartDate: StateFlow<Long?> = _semesterStartDate.asStateFlow()
+
+    // 1-14: Clases, 15-16: Exámenes, 17-18: Convocatorias, >18: Vacaciones
+    val currentWeekOfSemester = _semesterStartDate.map { start ->
+        if (start == null) return@map -1
+        val diff = System.currentTimeMillis() - start
+        val weeks = (diff / (1000L * 60 * 60 * 24 * 7)).toInt() + 1
+        weeks
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), -1)
+    
+    val semesterState = currentWeekOfSemester.map { week ->
+        when {
+            week < 0 -> "Vacaciones"
+            week in 1..14 -> "Clases"
+            week in 15..16 -> "Exámenes"
+            week in 17..18 -> "Convocatorias"
+            else -> "Vacaciones"
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Vacaciones")
+
+    fun startNewSemester() {
+        viewModelScope.launch {
+            // Delete old subjects, assessments, logs
+            val currentSubjects = repository.subjects.first()
+            for (sub in currentSubjects) {
+                repository.deleteSubject(sub)
+            }
+            // Start a new semester by resetting start date and asking for subjects (onboarding)
+            val now = System.currentTimeMillis()
+            _semesterStartDate.value = now
+            repository.saveSetting("semester_start_date", now.toString())
+            
+            _isOnboardingCompleted.value = false
+            repository.saveSetting("onboarding_completed", "false")
+        }
+    }
+    
+    fun endSemester() {
+        viewModelScope.launch {
+            val currentSubjects = repository.subjects.first()
+            val allAssessments = repository.assessments.first()
+            val passed = _passedSubjects.value.toMutableSet()
+            
+            for (sub in currentSubjects) {
+                val subAssessments = allAssessments.filter { it.subjectId == sub.id }
+                val currentPercentage = subAssessments.sumOf { it.percentage }
+                val currentWeighted = subAssessments.sumOf { (it.grade ?: 0.0) * (it.percentage / 100.0) }
+                
+                // If they passed (>=6.0) or if no exams were registered (assume passed)
+                if (currentPercentage == 0.0 || currentWeighted >= 6.0) {
+                    val curriculumMatch = com.example.data.CurriculumData.industrialEngineering.find { 
+                        it.name.equals(sub.name, ignoreCase = true) 
+                    }
+                    if (curriculumMatch != null) {
+                        passed.add(curriculumMatch.code)
+                    } else {
+                        passed.add(sub.name) // fallback
+                    }
+                }
+            }
+            
+            _passedSubjects.value = passed
+            repository.saveSetting("passed_subjects", passed.joinToString(","))
+            
+            _semesterStartDate.value = null
+            repository.saveSetting("semester_start_date", "")
+        }
+    }
+
+    fun updateSemesterStartByWeek(week: Int) {
+        viewModelScope.launch {
+            val millisInWeek = 7L * 24L * 60L * 60L * 1000L
+            // week 1 means 0 weeks have passed
+            val offsetMillis = (week - 1).coerceAtLeast(0) * millisInWeek
+            val newStartDate = System.currentTimeMillis() - offsetMillis
+            _semesterStartDate.value = newStartDate
+            repository.saveSetting("semester_start_date", newStartDate.toString())
+        }
+    }
 
     private val _arrivalMarginPreference = MutableStateFlow("normal") // "normal" or "temprano" (+10 min)
     val arrivalMarginPreference: StateFlow<String> = _arrivalMarginPreference.asStateFlow()
@@ -93,6 +177,8 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             repository.getSetting("arrival_margin_preference")?.let { _arrivalMarginPreference.value = it }
             repository.getSetting("weather_desc")?.let { _weatherDescription.value = it }
             repository.getSetting("is_raining")?.let { _isRaining.value = it.toBoolean() }
+            repository.getSetting("semester_start_date")?.let { _semesterStartDate.value = it.toLongOrNull() }
+            repository.getSetting("passed_subjects")?.let { _passedSubjects.value = it.split(",").filter { s -> s.isNotEmpty() }.toSet() }
             refreshWeather()
         }
     }
@@ -106,6 +192,47 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _isOnboardingCompleted.value = completed
             repository.saveSetting("onboarding_completed", completed.toString())
+        }
+    }
+
+    fun loadDemoData() {
+        viewModelScope.launch {
+            // Delete old data
+            val currentSubjects = repository.subjects.first()
+            for (sub in currentSubjects) {
+                repository.deleteSubject(sub)
+            }
+            
+            // Insert dummy subjects
+            val s1 = Subject(name = "Álgebra Lineal", schedule = "Lu, Mi", sessionsJson = "[{\"day\":\"Lu\",\"block\":\"M1\",\"room\":\"Aula 1\"},{\"day\":\"Mi\",\"block\":\"M1\",\"room\":\"Aula 1\"}]", requiredAttendancePercent = 70, totalClasses = 28, colorHex = "#FFCDD2")
+            val s2 = Subject(name = "Física General", schedule = "Ma, Ju", sessionsJson = "[{\"day\":\"Ma\",\"block\":\"M3\",\"room\":\"Lab 2\"},{\"day\":\"Ju\",\"block\":\"M3\",\"room\":\"Lab 2\"}]", requiredAttendancePercent = 80, totalClasses = 28, colorHex = "#E1BEE7")
+            val s3 = Subject(name = "Programación I", schedule = "Vi", sessionsJson = "[{\"day\":\"Vi\",\"block\":\"M5\",\"room\":\"Lab Comp\"}]", requiredAttendancePercent = 75, totalClasses = 14, colorHex = "#BBDEFB")
+            
+            val id1 = repository.insertSubject(s1).toInt()
+            val id2 = repository.insertSubject(s2).toInt()
+            val id3 = repository.insertSubject(s3).toInt()
+            
+            // Assessments
+            repository.insertAssessment(Assessment(subjectId = id1, name = "Parcial 1", grade = 85.0, percentage = 30.0))
+            repository.insertAssessment(Assessment(subjectId = id1, name = "Parcial 2", grade = 90.0, percentage = 30.0))
+            repository.insertAssessment(Assessment(subjectId = id2, name = "Lab 1", grade = 100.0, percentage = 20.0))
+            repository.insertAssessment(Assessment(subjectId = id3, name = "Proyecto Final", grade = 95.0, percentage = 50.0))
+            
+            // Logs
+            val sdf = SimpleDateFormat("dd MMM", Locale.getDefault())
+            val date1 = sdf.format(Date(System.currentTimeMillis() - 86400000L * 2))
+            val date2 = sdf.format(Date(System.currentTimeMillis() - 86400000L * 1))
+            
+            repository.insertAttendanceLog(AttendanceLog(subjectId = id1, date = date1, isPresent = true))
+            repository.insertAttendanceLog(AttendanceLog(subjectId = id2, date = date1, isPresent = false))
+            repository.insertAbsence(Absence(subjectId = id2, date = date1))
+            repository.insertAttendanceLog(AttendanceLog(subjectId = id3, date = date2, isPresent = true))
+            
+            val now = System.currentTimeMillis()
+            _semesterStartDate.value = now
+            repository.saveSetting("semester_start_date", now.toString())
+            _isOnboardingCompleted.value = true
+            repository.saveSetting("onboarding_completed", "true")
         }
     }
 
@@ -129,6 +256,19 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _baseTravelTime.value = minutes
             repository.saveSetting("base_travel_time", minutes.toString())
+        }
+    }
+
+    fun togglePassedSubject(code: String) {
+        viewModelScope.launch {
+            val current = _passedSubjects.value.toMutableSet()
+            if (current.contains(code)) {
+                current.remove(code)
+            } else {
+                current.add(code)
+            }
+            _passedSubjects.value = current
+            repository.saveSetting("passed_subjects", current.joinToString(","))
         }
     }
 
@@ -184,17 +324,29 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         _isRaining.value = !_isRaining.value
     }
 
-    fun addSubject(name: String, schedule: String, time: String, requiredAttendancePercent: Int, totalClasses: Int, classroom: String) {
+    fun addSubject(name: String, schedule: String, sessionsJson: String, requiredAttendancePercent: Int, totalClasses: Int, colorHex: String = "#FFB3E5FC") {
         viewModelScope.launch {
             val subject = Subject(
                 name = name,
                 schedule = schedule,
-                time = time,
+                sessionsJson = sessionsJson,
                 requiredAttendancePercent = requiredAttendancePercent,
                 totalClasses = totalClasses,
-                classroom = classroom.ifBlank { "Aula por definir" }
+                colorHex = colorHex
             )
-            repository.insertSubject(subject)
+            val subjectId = repository.insertSubject(subject).toInt()
+            
+            // Auto-generate Grading System (0-100 total)
+            // Unit 1 (50)
+            repository.insertAssessment(Assessment(subjectId = subjectId, name = "U1: Examen", grade = null, percentage = 10.0))
+            for (i in 1..5) {
+                repository.insertAssessment(Assessment(subjectId = subjectId, name = "U1: Prueba $i", grade = null, percentage = 8.0))
+            }
+            // Unit 2 (50)
+            repository.insertAssessment(Assessment(subjectId = subjectId, name = "U2: Examen", grade = null, percentage = 10.0))
+            for (i in 1..5) {
+                repository.insertAssessment(Assessment(subjectId = subjectId, name = "U2: Prueba $i", grade = null, percentage = 8.0))
+            }
         }
     }
 
@@ -300,11 +452,24 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     }
 
     // Modern Attendance Log properties & triggers
+    private val _snackbarEvent = MutableSharedFlow<String>()
+    val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
+
     fun registerAttendanceLog(subjectId: Int, isPresent: Boolean, dateStr: String? = null) {
         viewModelScope.launch {
             val date = dateStr ?: SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date())
-            repository.insertAttendanceLog(AttendanceLog(subjectId = subjectId, date = date, isPresent = isPresent))
             
+            // Prevent duplicates for the same day
+            val existingLogs = repository.getLogsForSubject(subjectId).first()
+            if (existingLogs.any { it.date == date }) {
+                return@launch
+            }
+
+            val insertedId = repository.insertAttendanceLog(AttendanceLog(subjectId = subjectId, date = date, isPresent = isPresent))
+            lastInsertedLogId = insertedId
+            
+            _snackbarEvent.emit("Asistencia registrada")
+
             // For backwards compatibility with standard dashboard cards:
             if (!isPresent) {
                 repository.insertAbsence(Absence(subjectId = subjectId, date = date))
@@ -319,7 +484,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 val maxAbs = subject.totalClasses - Math.ceil(subject.totalClasses * (subject.requiredAttendancePercent / 100.0)).toInt()
                 val remaining = maxAbs - currentAbsQty
                 
-                val title = if (isPresent) "✓ Presente registrado!" else "⚠️ Falta registrada!"
+                val title = if (isPresent) "Presente registrado" else "Falta registrada"
                 val description = if (isPresent) {
                     "Marcaste asistencia de la materia '${subject.name}' para el día $date. ¡Genial!"
                 } else {
@@ -333,6 +498,30 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 }
                 NotificationHelper.sendNotification(getApplication(), title, description)
             }
+        }
+    }
+
+    private var lastInsertedLogId: Long? = null
+
+    fun undoLastAttendanceLog() {
+        viewModelScope.launch {
+            lastInsertedLogId?.let { logId ->
+                val logs = repository.attendanceLogs.first()
+                val log = logs.find { it.id == logId.toInt() }
+                if (log != null) {
+                    repository.deleteAttendanceLogById(log.id)
+                    if (!log.isPresent) {
+                        val absences = repository.absences.first()
+                        val absence = absences.find { it.subjectId == log.subjectId && it.date == log.date }
+                        if (absence != null) {
+                            repository.deleteAbsenceById(absence.id)
+                        }
+                    } else {
+                        _weeklyStreak.value = (_weeklyStreak.value - 1).coerceAtLeast(0)
+                    }
+                }
+            }
+            lastInsertedLogId = null
         }
     }
 
@@ -363,14 +552,20 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
 
     fun clearAllData() {
         viewModelScope.launch {
-            val db = AppDatabase.getDatabase(getApplication())
-            db.clearAllTables()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val db = AppDatabase.getDatabase(getApplication())
+                db.clearAllTables()
+            }
             saveUsername("Estudiante")
             saveRoute("Casa", "Facultad")
             saveBaseTravelTime(25)
             saveGoogleMapsApiKey("")
             _isRaining.value = false
             _weeklyStreak.value = 0
+            _passedSubjects.value = emptySet()
+            repository.saveSetting("passed_subjects", "")
+            _semesterStartDate.value = null
+            repository.saveSetting("semester_start_date", "")
             _isOnboardingCompleted.value = false
             repository.saveSetting("onboarding_completed", "false")
             prepopulateDatabase()

@@ -1,9 +1,13 @@
 package com.example.ui
 
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,11 +27,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -41,13 +47,15 @@ import com.example.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.ceil
+import kotlinx.coroutines.launch
 
 // Mascot Buddy Custom Vector Illustration
 @Composable
 fun BuddyMascot(
     modifier: Modifier = Modifier,
     isWorried: Boolean = false,
-    isHappy: Boolean = true
+    isHappy: Boolean = true,
+    pose: String = "idle" // "idle", "greeting", "working"
 ) {
     Box(
         modifier = modifier
@@ -68,6 +76,18 @@ fun BuddyMascot(
             drawCircle(color = Color.White, radius = w * 0.15f, center = Offset(w * 0.75f, h * 0.25f))
             drawCircle(color = DarkGreen, radius = w * 0.15f, center = Offset(w * 0.75f, h * 0.25f), style = Stroke(width = 4f))
             drawCircle(color = Color(0xFFFFB7B2), radius = w * 0.08f, center = Offset(w * 0.75f, h * 0.25f))
+
+            // Draw arms in back for certain poses
+            if (pose == "greeting") {
+                val armPath = Path().apply {
+                    moveTo(w * 0.8f, h * 0.6f)
+                    quadraticTo(w * 1.0f, h * 0.4f, w * 0.9f, h * 0.2f)
+                }
+                drawPath(path = armPath, color = DarkGreen, style = Stroke(width = 12f, cap = StrokeCap.Round))
+                drawPath(path = armPath, color = Color.White, style = Stroke(width = 6f, cap = StrokeCap.Round))
+                drawCircle(color = Color.White, radius = w * 0.08f, center = Offset(w * 0.9f, h * 0.2f))
+                drawCircle(color = DarkGreen, radius = w * 0.08f, center = Offset(w * 0.9f, h * 0.2f), style = Stroke(width = 3f))
+            }
 
             // Head Base
             drawCircle(color = Color.White, radius = w * 0.35f, center = Offset(w * 0.5f, h * 0.52f))
@@ -100,6 +120,13 @@ fun BuddyMascot(
                 size = Size(w * 0.14f, h * 0.12f),
                 style = Stroke(width = 4.0f)
             )
+
+            if (pose == "working") {
+                // Draw some glasses
+                drawCircle(color = DarkGreen, radius = w * 0.12f, center = Offset(w * 0.38f, h * 0.48f), style = Stroke(width = 4f))
+                drawCircle(color = DarkGreen, radius = w * 0.12f, center = Offset(w * 0.62f, h * 0.48f), style = Stroke(width = 4f))
+                drawLine(color = DarkGreen, start = Offset(w * 0.5f, h * 0.48f), end = Offset(w * 0.5f, h * 0.48f), strokeWidth = 4f)
+            }
 
             // Eyes
             val eyeRadius = w * 0.045f
@@ -145,7 +172,7 @@ fun BuddyMascot(
 
 // Map Vector Drawing for Next Class Card Background
 @Composable
-fun StylizedMapBackground(modifier: Modifier = Modifier) {
+fun StylizedMapBackground(modifier: Modifier = Modifier, isUserOnCampus: Boolean = false) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
@@ -199,7 +226,16 @@ fun StylizedMapBackground(modifier: Modifier = Modifier) {
         )
         // Add subtle nodes
         drawCircle(color = NavyBlue.copy(alpha = 0.12f), radius = 5.dp.toPx(), center = Offset(w * 0.15f, h * 0.72f))
-        drawCircle(color = NavyBlue.copy(alpha = 0.15f), radius = 5.dp.toPx(), center = Offset(w * 0.85f, h * 0.28f))
+        
+        // University location
+        val uniCenter = Offset(w * 0.85f, h * 0.28f)
+        drawCircle(color = NavyBlue.copy(alpha = 0.15f), radius = 5.dp.toPx(), center = uniCenter)
+
+        if (isUserOnCampus) {
+            // Draw a small avatar / pin on the university node
+            drawCircle(color = MintGreen, radius = 8.dp.toPx(), center = uniCenter)
+            drawCircle(color = NavyBlue, radius = 4.dp.toPx(), center = uniCenter)
+        }
     }
 }
 
@@ -207,9 +243,11 @@ fun StylizedMapBackground(modifier: Modifier = Modifier) {
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object Onboarding : Screen("onboarding", "Onboarding", Icons.Default.PlayArrow)
     object Inicio : Screen("inicio", "Inicio", Icons.Default.Home)
+    object FocusMode : Screen("focus_mode", "Modo Focus", Icons.Default.Lock)
     object Asistencia : Screen("asistencia", "Asistencia", Icons.Default.CheckCircle)
     object Notas : Screen("notas", "Notas", Icons.Default.Star)
     object Config_Tab : Screen("configuracion_tab", "Configuración", Icons.Default.Settings)
+    object Pensum : Screen("pensum", "Progreso", Icons.Default.DateRange)
 }
 
 @Composable
@@ -222,6 +260,24 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
     // Auxiliary state to view assessment list for a subject (Notas)
     var selectedSubjectIdForGrades by remember { mutableStateOf<Int?>(null) }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarScope = rememberCoroutineScope()
+
+    LaunchedEffect(viewModel.snackbarEvent) {
+        viewModel.snackbarEvent.collect { message ->
+            snackbarScope.launch {
+                val result = snackbarHostState.showSnackbar(
+                    message = message,
+                    actionLabel = "Deshacer",
+                    duration = SnackbarDuration.Short
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    viewModel.undoLastAttendanceLog()
+                }
+            }
+        }
+    }
+
     LaunchedEffect(isOnboardingCompleted) {
         if (!isOnboardingCompleted) {
             currentScreen = Screen.Onboarding
@@ -231,13 +287,14 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             if (currentScreen != Screen.Onboarding) {
                 NavigationBar(
                     containerColor = Color(0xFFF0F4F8),
                     modifier = Modifier.shadow(8.dp)
                 ) {
-                    val screens = listOf(Screen.Inicio, Screen.Asistencia, Screen.Notas, Screen.Config_Tab)
+                    val screens = listOf(Screen.Inicio, Screen.FocusMode, Screen.Asistencia, Screen.Notas, Screen.Config_Tab)
                     screens.forEach { s ->
                         val selected = currentScreen == s
                         NavigationBarItem(
@@ -272,67 +329,124 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
         },
         containerColor = BackgroundBone
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding)) {
-            when (currentScreen) {
-                Screen.Onboarding -> {
-                    OnboardingScreen(
-                        viewModel = viewModel,
-                        onFinished = {
-                            viewModel.updateOnboardingStatus(true)
-                            currentScreen = Screen.Inicio
-                        }
-                    )
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding).imePadding()) {
+            AnimatedContent(
+                targetState = currentScreen,
+                label = "screen_transition",
+                transitionSpec = {
+                    if (initialState == Screen.Onboarding && targetState == Screen.Inicio) {
+                        (slideInVertically { height -> height } + fadeIn(animationSpec = tween(500)))
+                            .togetherWith(slideOutVertically { height -> -height } + fadeOut(animationSpec = tween(500)))
+                    } else {
+                        (fadeIn(animationSpec = tween(300)) + scaleIn(initialScale = 0.95f, animationSpec = tween(300)))
+                            .togetherWith(fadeOut(animationSpec = tween(200)))
+                    }
                 }
-                Screen.Inicio -> {
-                    DashboardScreen(
-                        viewModel = viewModel,
-                        onNavigateToDetails = { subjectId ->
-                            selectedSubjectIdForDetails = subjectId
-                            currentScreen = Screen.Asistencia
-                        },
-                        onNavigateToGrades = { subjectId ->
-                            selectedSubjectIdForGrades = subjectId
-                            currentScreen = Screen.Notas
-                        },
-                        onConfigureRoute = {
-                            currentScreen = Screen.Config_Tab
-                        }
-                    )
-                }
-                Screen.Asistencia -> {
-                    if (selectedSubjectIdForDetails == null) {
-                        AsistenciaOverviewScreen(
+            ) { targetScreen ->
+                when (targetScreen) {
+                    Screen.Onboarding -> {
+                        OnboardingScreen(
                             viewModel = viewModel,
-                            onSubjectClick = { subjectId ->
+                            onFinished = {
+                                viewModel.updateOnboardingStatus(true)
+                                viewModel.startNewSemester()
+                                currentScreen = Screen.Inicio
+                            }
+                        )
+                    }
+                    Screen.Inicio -> {
+                        DashboardScreen(
+                            viewModel = viewModel,
+                            onNavigateToDetails = { subjectId ->
                                 selectedSubjectIdForDetails = subjectId
-                            }
-                        )
-                    } else {
-                        SubjectDetailsScreen(
-                            viewModel = viewModel,
-                            subjectId = selectedSubjectIdForDetails!!,
-                            onBack = { selectedSubjectIdForDetails = null }
-                        )
-                    }
-                }
-                Screen.Notas -> {
-                    if (selectedSubjectIdForGrades == null) {
-                        GradesOverviewScreen(
-                            viewModel = viewModel,
-                            onSubjectClick = { subjectId ->
+                                currentScreen = Screen.Asistencia
+                            },
+                            onNavigateToGrades = { subjectId ->
                                 selectedSubjectIdForGrades = subjectId
+                                currentScreen = Screen.Notas
+                            },
+                            onConfigureRoute = {
+                                currentScreen = Screen.Config_Tab
+                            },
+                            onNavigateToFocus = {
+                                currentScreen = Screen.FocusMode
                             }
                         )
-                    } else {
-                        SubjectGradesScreen(
+                    }
+                    Screen.Asistencia -> {
+                        AnimatedContent(
+                            targetState = selectedSubjectIdForDetails,
+                            label = "asistencia_details_transition",
+                            transitionSpec = {
+                                if (targetState != null) {
+                                    (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
+                                } else {
+                                    (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
+                                }
+                            }
+                        ) { subjectId ->
+                            if (subjectId == null) {
+                                AsistenciaOverviewScreen(
+                                    viewModel = viewModel,
+                                    onSubjectClick = { clickedId ->
+                                        selectedSubjectIdForDetails = clickedId
+                                    },
+                                    onConfigureRoute = {
+                                        currentScreen = Screen.Config_Tab
+                                    }
+                                )
+                            } else {
+                                SubjectDetailsScreen(
+                                    viewModel = viewModel,
+                                    subjectId = subjectId,
+                                    onBack = { selectedSubjectIdForDetails = null }
+                                )
+                            }
+                        }
+                    }
+                    Screen.Notas -> {
+                        AnimatedContent(
+                            targetState = selectedSubjectIdForGrades,
+                            label = "notas_details_transition",
+                            transitionSpec = {
+                                if (targetState != null) {
+                                    (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
+                                } else {
+                                    (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
+                                }
+                            }
+                        ) { subjectId ->
+                            if (subjectId == null) {
+                                GradesOverviewScreen(
+                                    viewModel = viewModel,
+                                    onSubjectClick = { clickedId ->
+                                        selectedSubjectIdForGrades = clickedId
+                                    },
+                                    onConfigureRoute = {
+                                        currentScreen = Screen.Config_Tab
+                                    }
+                                )
+                            } else {
+                                SubjectGradesScreen(
+                                    viewModel = viewModel,
+                                    subjectId = subjectId,
+                                    onBack = { selectedSubjectIdForGrades = null }
+                                )
+                            }
+                        }
+                    }
+                    Screen.Config_Tab -> {
+                        ConfigTabScreen(
                             viewModel = viewModel,
-                            subjectId = selectedSubjectIdForGrades!!,
-                            onBack = { selectedSubjectIdForGrades = null }
+                            onNavigateToPensum = { currentScreen = Screen.Pensum }
                         )
                     }
-                }
-                Screen.Config_Tab -> {
-                    ConfigTabScreen(viewModel = viewModel)
+                    Screen.Pensum -> {
+                        PensumProgressScreen(viewModel = viewModel)
+                    }
+                    Screen.FocusMode -> {
+                        FocusModeScreen()
+                    }
                 }
             }
         }
@@ -340,90 +454,65 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
 }
 
 // Helper Location Search field
+@OptIn(ExperimentalMaterial3Api::class)
+
+fun calculateSubjectCriticality(subjectName: String): String {
+    val upperName = subjectName.uppercase()
+    return when {
+        upperName.contains("MATEMÁTICA") || upperName.contains("MATEMATICA") || 
+        upperName.contains("FÍSICA") || upperName.contains("FISICA") ||
+        upperName.contains("PROGRAMACIÓN") || upperName.contains("PROGRAMACION") ||
+        upperName.contains("ESTUDIO DEL TRABAJO") || upperName.contains("ESTADISTICA") ||
+        upperName.contains("INVESTIGACION DE OPERACIONES") -> "Alta (Pre-requisito crítico)"
+        
+        upperName.contains("QUÍMICA") || upperName.contains("MECANICA") ||
+        upperName.contains("TERMODINÁMICA") || upperName.contains("SISTEMAS PRODUCTIVOS") ||
+        upperName.contains("MÉTODOS NUMÉRICOS") || upperName.contains("PROCESOS DE MANUFACTURA") -> "Media"
+        
+        else -> "Baja"
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LocationSearchField(
+fun PresetDropdownField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
-    placeholder: String,
-    viewModel: UniBuddyViewModel,
-    modifier: Modifier = Modifier
+    options: List<String>,
+    modifier: Modifier = Modifier,
+    readOnly: Boolean = false
 ) {
-    var query by remember(value) { mutableStateOf(value) }
-    var isFocused by remember { mutableStateOf(false) }
-    val results by viewModel.locationSearchResults.collectAsStateWithLifecycle()
-    val isSearching by viewModel.isSearchingLocations.collectAsStateWithLifecycle()
+    var expanded by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier) {
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = modifier
+    ) {
         OutlinedTextField(
-            value = query,
-            onValueChange = {
-                query = it
-                onValueChange(it)
-                viewModel.searchLocations(it)
-            },
+            value = value,
+            onValueChange = onValueChange,
             label = { Text(label) },
-            placeholder = { Text(placeholder) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .onFocusChanged { isFocused = it.isFocused },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen),
+            modifier = Modifier.menuAnchor().fillMaxWidth(),
             singleLine = true,
-            trailingIcon = {
-                if (isSearching) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = DarkGreen)
-                } else if (query.isNotEmpty()) {
-                    IconButton(onClick = {
-                        query = ""
-                        onValueChange("")
-                        viewModel.clearLocationSearchResults()
-                    }) {
-                        Icon(imageVector = Icons.Default.Clear, contentDescription = "Limpiar")
-                    }
-                }
-            },
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
+            readOnly = readOnly
         )
 
-        if (isFocused && results.isNotEmpty() && query.length >= 2) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp)
-                    .heightIn(max = 200.dp)
-                    .shadow(4.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                LazyColumn {
-                    items(results) { res ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    query = res.displayName
-                                    onValueChange(res.displayName)
-                                    viewModel.clearLocationSearchResults()
-                                }
-                                .padding(vertical = 10.dp, horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.LocationOn,
-                                contentDescription = null,
-                                tint = DarkGreen,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = res.displayName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                color = NavyBlue
-                            )
-                        }
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { selectionOption ->
+                DropdownMenuItem(
+                    text = { Text(selectionOption) },
+                    onClick = {
+                        onValueChange(selectionOption)
+                        expanded = false
                     }
-                }
+                )
             }
         }
     }
@@ -442,19 +531,20 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
 
     // Subject Form Multi adder
     var subjectName by remember { mutableStateOf("") }
+    var selectedColor by remember { mutableStateOf("#E8F5E9") }
     var onboardingDays by remember { mutableStateOf(setOf("Lu", "Mi", "Vi")) }
     var onboardingBlock by remember { mutableStateOf("B2") }
     var onboardingCustomTime by remember { mutableStateOf("10:00 AM") }
-    var subjectClassesTotal by remember { mutableStateOf("32") }
-    var subjectMinPercent by remember { mutableStateOf("75") }
     var subjectClassroom by remember { mutableStateOf("Aula 304, Edificio B") }
+    var semesterInput by remember { mutableStateOf("1") }
 
     val subjects by viewModel.subjects.collectAsStateWithLifecycle()
+    val availableColors = listOf("#A5D6A7", "#90CAF9", "#FFCC80", "#CE93D8", "#80DEEA", "#EF9A9A", "#FFF59D")
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundBone)
+            .background(BackgroundGray)
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -480,7 +570,7 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                             .height(8.dp)
                             .width(if (isActive) 32.dp else 8.dp)
                             .clip(CircleShape)
-                            .background(if (isActive) DarkGreen else SlateGray.copy(alpha = 0.3f))
+                            .background(if (isActive) NavyBlue else DarkGray.copy(alpha = 0.3f))
                     )
                 }
             }
@@ -506,11 +596,30 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                     Text(
                         text = "Tu compañero para organizar la universidad sin estrés y estar a tiempo.",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = SlateGray,
+                        color = DarkGray,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
                     Spacer(modifier = Modifier.height(32.dp))
+
+                    Surface(
+                        color = Amber.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "¿Reinstalaste la app? Finaliza esta configuración rápida y dirígete a la pestaña 'Configuración' para restaurar tus datos si tienes un respaldo.",
+                                fontSize = 12.sp,
+                                color = Color(0xFFE65100),
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     OutlinedTextField(
                         value = nameInput,
@@ -522,8 +631,8 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                             .testTag("onboarding_name_input"),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = DarkGreen,
-                            focusedLabelColor = DarkGreen
+                            focusedBorderColor = NavyBlue,
+                            focusedLabelColor = NavyBlue
                         )
                     )
 
@@ -540,12 +649,12 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                             .fillMaxWidth()
                             .height(52.dp)
                             .testTag("onboarding_next_step1"),
-                        colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
+                        colors = ButtonDefaults.buttonColors(containerColor = NavyBlue),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Empezar", color = Bone, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Empezar", color = White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Icon(imageVector = Icons.Default.ArrowForward, contentDescription = null, tint = Bone)
+                        Icon(imageVector = Icons.Default.ArrowForward, contentDescription = null, tint = White)
                     }
                 }
                 2 -> {
@@ -566,28 +675,32 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                     Text(
                         text = "Configura tus rutas habituales para llegar a tiempo a la facultad.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = SlateGray,
+                        color = DarkGray,
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    LocationSearchField(
+                    PresetDropdownField(
                         label = "¿Desde dónde sales?",
                         value = originInput,
                         onValueChange = { originInput = it },
-                        placeholder = "Ej: Casa, Trabajo",
-                        viewModel = viewModel,
+                        options = listOf("Ubicación actual (GPS)", "Casa", "Trabajo"),
                         modifier = Modifier.fillMaxWidth()
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    LocationSearchField(
+                    PresetDropdownField(
                         label = "¿A qué facultad vas?",
                         value = destinationInput,
                         onValueChange = { destinationInput = it },
-                        placeholder = "Ej: Ciencias Económicas",
-                        viewModel = viewModel,
+                        options = listOf(
+                            "Universidad Nacional de Ingeniería (UNI) - RUPAP",
+                            "Universidad Nacional de Ingeniería (UNI) - RUSB",
+                            "Universidad Nacional Autónoma de Nicaragua (UNAN)",
+                            "Universidad Centroamericana (UCA)",
+                            "Universidad Politécnica de Nicaragua (UPOLI)"
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -597,14 +710,26 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                         value = baseTravelMinutes,
                         onValueChange = { baseTravelMinutes = it.filter { char -> char.isDigit() } },
                         label = { Text("Minutos promedio de viaje") },
-                        leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null, tint = SlateGray) },
+                        leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkGray) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = DarkGreen,
-                            focusedLabelColor = DarkGreen
+                            focusedBorderColor = NavyBlue,
+                            focusedLabelColor = NavyBlue
                         )
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = semesterInput,
+                        onValueChange = { semesterInput = it.filter { char -> char.isDigit() } },
+                        label = { Text("¿En qué semestre estás? (Ej: 1, 2, 3)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NavyBlue, focusedLabelColor = NavyBlue)
                     )
 
                     Spacer(modifier = Modifier.height(24.dp))
@@ -620,10 +745,10 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
+                        colors = ButtonDefaults.buttonColors(containerColor = NavyBlue),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Siguiente", color = Bone, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Siguiente", color = White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -635,8 +760,8 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DarkGreen),
-                        border = BorderStroke(1.5.dp, DarkGreen),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = NavyBlue),
+                        border = BorderStroke(1.5.dp, NavyBlue),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text("Configurar más tarde", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -653,21 +778,75 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Configura tus asignaturas para predecir tus asistencias y notas. ¡Ya te agregamos Álgebra y Física por defecto para empezar!",
+                        text = "Configura tus asignaturas para el semestre $semesterInput. Toca una sugerencia para empezar.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = SlateGray,
+                        color = DarkGray,
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    val semesterNum = semesterInput.toIntOrNull() ?: 1
+                    val suggestedCurriculum = remember(semesterNum) { 
+                        CurriculumData.industrialEngineering.filter { it.semester == semesterNum } 
+                    }
+
+                    if (suggestedCurriculum.isNotEmpty()) {
+                        Text(
+                            text = "Materias sugeridas (Semestre $semesterNum):",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NavyBlue,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(suggestedCurriculum) { mat: com.example.data.PensumSubject ->
+                                val isAdded = subjects.any { it.name.equals(mat.name, ignoreCase = true) }
+                                FilterChip(
+                                    selected = isAdded,
+                                    onClick = { 
+                                        if (!isAdded) {
+                                            subjectName = mat.name
+                                            selectedColor = availableColors.random()
+                                        }
+                                    },
+                                    label = { Text(mat.name, fontSize = 12.sp) },
+                                    leadingIcon = if (isAdded) {
+                                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                                    } else null,
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = NavyBlue.copy(alpha = 0.1f),
+                                        selectedLabelColor = NavyBlue,
+                                        selectedLeadingIconColor = NavyBlue
+                                    )
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Bone),
+                        colors = CardDefaults.cardColors(containerColor = White),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Agregar otra materia (+)", style = MaterialTheme.typography.titleMedium, color = NavyBlue, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (subjectName.isBlank()) "Nueva Materia" else "Configurando: $subjectName",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = NavyBlue,
+                                fontWeight = FontWeight.Bold
+                            )
                             Spacer(modifier = Modifier.height(12.dp))
+
+                            // New Sessions List
+                            val sessionsList = remember { mutableStateListOf<com.example.data.ClassSessionDetails>() }
 
                             OutlinedTextField(
                                 value = subjectName,
@@ -675,76 +854,111 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                                 label = { Text("Nombre de la Materia") },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            VisualSchedulePicker(
-                                selectedDays = onboardingDays,
-                                onDaysChanged = { onboardingDays = it },
-                                selectedBlock = onboardingBlock,
-                                onBlockChanged = { onboardingBlock = it },
-                                customTime = onboardingCustomTime,
-                                onCustomTimeChanged = { onboardingCustomTime = it },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                OutlinedTextField(
-                                    value = subjectClassesTotal,
-                                    onValueChange = { subjectClassesTotal = it.filter { char -> char.isDigit() } },
-                                    label = { Text("Clases totales") },
-                                    modifier = Modifier.weight(1f),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NavyBlue,
+                                    focusedLabelColor = NavyBlue,
+                                    unfocusedBorderColor = DarkGray.copy(alpha = 0.3f)
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                OutlinedTextField(
-                                    value = subjectMinPercent,
-                                    onValueChange = { subjectMinPercent = it.filter { char -> char.isDigit() } },
-                                    label = { Text("Asistencia mínima (%)") },
-                                    modifier = Modifier.weight(1f),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
-                                )
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            Text("Color Distintivo:", fontSize = 14.sp, color = NavyBlue, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                availableColors.forEach { hex ->
+                                    val colorValue = Color(android.graphics.Color.parseColor(hex))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(colorValue)
+                                            .border(
+                                                width = if (selectedColor == hex) 3.dp else 1.dp,
+                                                color = if (selectedColor == hex) NavyBlue else Color.Transparent,
+                                                shape = CircleShape
+                                            )
+                                            .clickable { selectedColor = hex },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (selectedColor == hex) {
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = NavyBlue, modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+                                }
                             }
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            Button(
-                                onClick = {
-                                    if (subjectName.isNotBlank() && onboardingDays.isNotEmpty()) {
-                                        val computedSchedule = onboardingDays.joinToString(", ")
-                                        val computedTime = when (onboardingBlock) {
-                                            "B1" -> "07:00 AM"
-                                            "B2" -> "08:40 AM"
-                                            "B3" -> "10:20 AM"
-                                            "B4" -> "12:45 PM"
-                                            "B5" -> "02:25 PM"
-                                            "B6" -> "04:05 PM"
-                                            else -> onboardingCustomTime
+                            SessionEditor(sessions = sessionsList, allSubjects = subjects)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            if (sessionsList.isNotEmpty()) {
+                                val computedClasses = sessionsList.size * 14
+                                Surface(
+                                    color = NavyBlue.copy(alpha = 0.05f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text("Resumen de Asistencia", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyBlue)
+                                        Text("Total estimado: $computedClasses clases en el semestre.", fontSize = 12.sp, color = DarkGray)
+                                        
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        var attendancePercent by remember { mutableStateOf(75f) }
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Mínimo requerido:", fontSize = 12.sp, color = DarkGray)
+                                            Text("${attendancePercent.toInt()}%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NavyBlue)
                                         }
-                                        viewModel.addSubject(
-                                            name = subjectName,
-                                            schedule = computedSchedule,
-                                            time = computedTime,
-                                            requiredAttendancePercent = subjectMinPercent.toIntOrNull() ?: 75,
-                                            totalClasses = subjectClassesTotal.toIntOrNull() ?: 32,
-                                            classroom = subjectClassroom
+                                        Slider(
+                                            value = attendancePercent,
+                                            onValueChange = { attendancePercent = it },
+                                            valueRange = 50f..100f,
+                                            steps = 9,
+                                            colors = SliderDefaults.colors(
+                                                thumbColor = NavyBlue,
+                                                activeTrackColor = NavyBlue,
+                                                inactiveTrackColor = DarkGray.copy(alpha = 0.2f)
+                                            )
                                         )
-                                        // Reset fields
-                                        subjectName = ""
-                                        onboardingDays = setOf("Lu", "Mi", "Vi")
-                                        onboardingBlock = "B2"
-                                        onboardingCustomTime = "10:00 AM"
-                                        subjectClassesTotal = "32"
-                                        subjectMinPercent = "75"
+                                        
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Button(
+                                            onClick = {
+                                                if (subjectName.isNotBlank()) {
+                                                    val computedSchedule = sessionsList.distinctBy { it.day }.joinToString(", ") { it.day }
+                                                    val jsonString = sessionsList.toJsonString()
+                                                    viewModel.addSubject(
+                                                        name = subjectName,
+                                                        schedule = computedSchedule,
+                                                        sessionsJson = jsonString,
+                                                        requiredAttendancePercent = attendancePercent.toInt(),
+                                                        totalClasses = computedClasses,
+                                                        colorHex = selectedColor
+                                                    )
+                                                    // Reset fields
+                                                    subjectName = ""
+                                                    sessionsList.clear()
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColors(containerColor = NavyBlue),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp), tint = White)
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Añadir Materia", fontWeight = FontWeight.Bold, color = White)
+                                        }
                                     }
-                                },
-                                modifier = Modifier.align(Alignment.End),
-                                colors = ButtonDefaults.buttonColors(containerColor = DarkGreen)
-                            ) {
-                                Text("Añadir", color = Bone)
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, DarkGray.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("Selecciona bloques en el horario arriba", color = DarkGray, fontSize = 12.sp, fontStyle = FontStyle.Italic)
+                                }
                             }
                         }
                     }
@@ -758,6 +972,31 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                         color = NavyBlue
                     )
 
+                    if (subjects.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        subjects.forEach { sub ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                colors = CardDefaults.cardColors(containerColor = Bone),
+                                border = BorderStroke(1.dp, SlateGray.copy(alpha = 0.2f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(sub.name, fontWeight = FontWeight.Bold, color = NavyBlue)
+                                    IconButton(
+                                        onClick = { viewModel.deleteSubject(sub) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = Terracotta)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Button(
@@ -770,7 +1009,18 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                         colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Finalizar", color = Bone, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Finalizar", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    TextButton(
+                        onClick = {
+                            viewModel.loadDemoData()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Cargar Modo Demo (Datos de Prueba)", color = NavyBlue, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -784,7 +1034,8 @@ fun DashboardScreen(
     viewModel: UniBuddyViewModel,
     onNavigateToDetails: (Int) -> Unit,
     onNavigateToGrades: (Int) -> Unit,
-    onConfigureRoute: () -> Unit
+    onConfigureRoute: () -> Unit,
+    onNavigateToFocus: () -> Unit
 ) {
     val username by viewModel.username.collectAsStateWithLifecycle()
     val subjects by viewModel.subjects.collectAsStateWithLifecycle()
@@ -796,12 +1047,19 @@ fun DashboardScreen(
     val attendanceLogs by viewModel.attendanceLogs.collectAsStateWithLifecycle()
     val assessments by viewModel.assessments.collectAsStateWithLifecycle()
 
+    val semesterState by viewModel.semesterState.collectAsStateWithLifecycle()
+    val currentWeek by viewModel.currentWeekOfSemester.collectAsStateWithLifecycle()
+
+    if (semesterState == "Vacaciones") {
+        VacationScreen(viewModel = viewModel, onConfigureRoute = onConfigureRoute)
+        return
+    }
+
     val context = LocalContext.current
 
     // GPS real and simulated tracking state
     var locationPermissionGranted by remember { mutableStateOf(false) }
     var realGPSDistanceKm by remember { mutableStateOf<Double?>(null) }
-    var selectedSimulatedDistanceMode by remember { mutableStateOf("real") } // "real", "lejos", "moderado", "cerca", "campus"
 
     val locationLauncher = rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
@@ -928,8 +1186,9 @@ fun DashboardScreen(
     }
 
     val nextClassMateria = nextClass?.name ?: "Sin materias"
-    val nextClassTime = nextClass?.time ?: "10:00 AM"
-    val nextClassRoom = nextClass?.classroom ?: "Aula sin definir"
+    val sessionParsed = nextClass?.sessionsJson?.let { it.parseSessions() }?.firstOrNull()
+    val nextClassTime = sessionParsed?.time ?: "10:00 AM"
+    val nextClassRoom = sessionParsed?.room ?: "Aula sin definir"
 
     // 2. Base travel time: average of last 10 entries if they exist, or reference from setting if < 3
     val isCalibrated = tripRecords.size >= 3
@@ -944,20 +1203,28 @@ fun DashboardScreen(
     val earlyMargin = if (arrivalMarginPref == "temprano") 10 else 0
 
     // GPS/Distance travel time calculation
-    val currentDistanceToCollege = when (selectedSimulatedDistanceMode) {
-        "lejos" -> 25.4
-        "moderado" -> 12.1
-        "cerca" -> 3.2
-        "campus" -> 0.15
-        else -> realGPSDistanceKm ?: 15.0
-    }
+    val currentDistanceToCollege = realGPSDistanceKm
 
-    val liveDistanceTravelMinutes = ((currentDistanceToCollege * 1.8) + 4.0).toInt().coerceAtLeast(1)
+    val liveDistanceTravelMinutes = currentDistanceToCollege?.let { ((it * 1.8) + 4.0).toInt().coerceAtLeast(1) }
 
-    val locationBasedTravelMinutes = if (selectedSimulatedDistanceMode != "real" || realGPSDistanceKm != null) {
+    val locationBasedTravelMinutes = if (liveDistanceTravelMinutes != null) {
         liveDistanceTravelMinutes + (if (isRaining) 8 else 0) + mondayMargin + earlyMargin
     } else {
         baseTravelTimeSource + (if (isRaining) 10 else 0) + mondayMargin + earlyMargin
+    }
+
+    // Auto-Attendance Geofence Logic
+    var showAutoAttendancePrompt by remember { mutableStateOf<Subject?>(null) }
+    LaunchedEffect(currentDistanceToCollege, nextClass) {
+        if (currentDistanceToCollege != null && currentDistanceToCollege < 0.5 && nextClass != null) { // Within 500 meters
+            val todayDateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+            val alreadyLogged = attendanceLogs.any { it.subjectId == nextClass.id && it.date == todayDateStr }
+            if (!alreadyLogged) {
+                showAutoAttendancePrompt = nextClass
+            }
+        } else {
+            showAutoAttendancePrompt = null
+        }
     }
 
     // 3. Compute projected arrival and compare with class start time
@@ -1005,17 +1272,14 @@ fun DashboardScreen(
         else -> "normal" // Projected arrival is more than 10 minutes before class start time
     }
 
-    val worstState = remember(subjects, absences) {
-        var alertCount = 0
-        var criticalCount = 0
-        subjects.forEach { sub ->
-            val subAbs = absences.filter { it.subjectId == sub.id }
-            val maxAbs = sub.totalClasses - ceil(sub.totalClasses * (sub.requiredAttendancePercent / 100.0)).toInt()
-            val remaining = maxAbs - subAbs.size
-            if (remaining <= 0) criticalCount++
-            else if (remaining <= 2) alertCount++
-        }
-        if (criticalCount > 0) "critico" else if (alertCount > 0) "atencion" else "normal"
+    val upcomingExamsCount = assessments.count { it.grade == null }
+    val globalAbsencesCount = attendanceLogs.count { !it.isPresent }
+    val calculatedStress = (upcomingExamsCount * 20f + globalAbsencesCount * 5f).coerceIn(0f, 100f)
+    
+    val worstState = when {
+        calculatedStress >= 80f -> "critico"
+        calculatedStress >= 50f -> "atencion"
+        else -> "normal"
     }
 
     LazyColumn(
@@ -1044,7 +1308,8 @@ fun DashboardScreen(
                     ) {
                         BuddyMascot(
                             modifier = Modifier.fillMaxSize().padding(2.dp),
-                            isHappy = true
+                            isHappy = true,
+                            pose = "greeting"
                         )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
@@ -1075,6 +1340,56 @@ fun DashboardScreen(
                         tint = NavyBlue,
                         modifier = Modifier.size(22.dp)
                     )
+                }
+            }
+        }
+
+        // Wellness Widget
+        item {
+            val stressStatusText = when (worstState) {
+                "critico" -> "Crítico"
+                "atencion" -> "Moderado"
+                else -> "Relajado"
+            }
+            WellnessWidget(
+                upcomingExamsCount = upcomingExamsCount,
+                absencesCount = globalAbsencesCount,
+                calculatedStress = calculatedStress,
+                statusText = stressStatusText
+            )
+        }
+
+        // Auto Attendance Geofence Prompt
+        if (showAutoAttendancePrompt != null) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth().shadow(8.dp, RoundedCornerShape(16.dp)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                    border = BorderStroke(2.dp, DarkGreen),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.LocationOn, contentDescription = null, tint = DarkGreen, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("¡Estás en el campus!", style = MaterialTheme.typography.titleMedium, color = NavyBlue, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Parece que estás listo para ${showAutoAttendancePrompt?.name}.", fontSize = 14.sp, color = SlateGray)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            Button(
+                                onClick = {
+                                    viewModel.registerAttendanceLog(showAutoAttendancePrompt!!.id, true)
+                                    showAutoAttendancePrompt = null
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Sí, asistí hoy", color = Bone)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1119,9 +1434,21 @@ fun DashboardScreen(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         val adviceText = when (worstState) {
-                            "critico" -> "¡Atención! Tienes materias en riesgo por faltas. Revisa tu panel para registrar asistencias."
-                            "atencion" -> "El parcial se está acercando. Repasa tus apuntes hoy para asegurar el promedio."
-                            else -> "¡Excelente ritmo! Vas al día con tu asistencia. Sigue así y el semestre será pan comido."
+                            "critico" -> listOf(
+                                "¡Respira hondo! Veo que estás al límite de faltas. Organiza bien tus tiempos y enfócate en asistir para no perder la materia.",
+                                "Situación crítica con las inasistencias. Es momento de mantener la calma y comprometerse a ir a clases.",
+                                "¡Alerta roja! No te preocupes, aún puedes salvar el semestre si te mantienes constante a partir de hoy."
+                            ).random()
+                            "atencion" -> listOf(
+                                "El parcial se está acercando. ¿Qué tal si hacemos una sesión de Focus Mode hoy para repasar tus apuntes?",
+                                "¡Se vienen los exámenes! Estudiar un ratito cada día es mejor que estresarse a última hora.",
+                                "Es época de evaluaciones. Mantén la concentración y asegúrate ese promedio."
+                            ).random()
+                            else -> listOf(
+                                "¡Excelente ritmo! Vas al día con tu asistencia. Sigue así y el semestre será pan comido.",
+                                "¡Todo bajo control! Tus estadísticas se ven muy bien. Sigue brillando.",
+                                "¡Buen trabajo! Tienes buen margen de asistencia y todo en orden. Tómate un tiempo para ti si lo necesitas."
+                            ).random()
                         }
                         Text(
                             text = adviceText,
@@ -1133,15 +1460,133 @@ fun DashboardScreen(
             }
         }
 
-        // Intelligent Attendance Decision / Indicator Card (¿Vale la pena ir hoy?)
+        // Cartoon Widgets Row
         item {
-            val examToday = remember(assessments) {
-                assessments.find { ass ->
-                    ass.grade == null && ass.examDate.trim().equals(currentDayCode, ignoreCase = true)
-                }
+            val tomorrowCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }
+            val tomorrowDayCode = when (tomorrowCal.get(Calendar.DAY_OF_WEEK)) {
+                Calendar.MONDAY -> "Lu"
+                Calendar.TUESDAY -> "Ma"
+                Calendar.WEDNESDAY -> "Mi"
+                Calendar.THURSDAY -> "Ju"
+                Calendar.FRIDAY -> "Vi"
+                else -> ""
+            }
+            val tomorrowFirstClass = subjects.filter { it.schedule.contains(tomorrowDayCode, ignoreCase=true) }.minByOrNull { sub ->
+                sub.sessionsJson.parseSessions().firstOrNull { it.day.equals(tomorrowDayCode, ignoreCase=true) }?.time ?: "Z"
+            }
+            val tomorrowFirstClassTime = tomorrowFirstClass?.sessionsJson?.parseSessions()?.firstOrNull { it.day.equals(tomorrowDayCode, ignoreCase=true) }?.time ?: ""
+
+            val nextExam = assessments.filter { it.grade == null }.minByOrNull { it.examDate }
+            val nextExamSubject = nextExam?.let { ex -> subjects.find { it.id == ex.subjectId } }
+
+            val widgets = mutableListOf<CartoonWidgetData>()
+
+            // 0. Next Class Countdown Widget
+            widgets.add(CartoonWidgetData(
+                title = "PRÓXIMA CLASE",
+                description = "Tu clase empieza en 47 min",
+                icon = Icons.Default.PlayArrow,
+                bgColor = Color(0xFFE8F5E9), // Light Green
+                borderColor = Color(0xFF2E7D32), // Green
+                iconBgColor = Color(0xFFA5D6A7),
+                isAlert = true
+            ))
+
+            // 1. Tomorrow's First Class
+            if (tomorrowFirstClass != null) {
+                widgets.add(CartoonWidgetData(
+                    title = "MAÑANA ARRANCA",
+                    description = "${tomorrowFirstClass.name} ($tomorrowFirstClassTime)",
+                    icon = Icons.Default.DateRange,
+                    bgColor = Color(0xFFE1BEE7), // Light Purple
+                    borderColor = Color(0xFF8E24AA), // Purple
+                    iconBgColor = Color(0xFFCE93D8)
+                ))
             }
 
-            val adviceData = remember(subjects, absences, attendanceLogs, assessments, isRaining, examToday) {
+            // 3. Next Exam Notification
+            if (nextExam != null && nextExamSubject != null) {
+                widgets.add(CartoonWidgetData(
+                    title = "¡ALERTA EXAMEN!",
+                    description = "${nextExam.name} de ${nextExamSubject.name} (${nextExam.examDate})",
+                    icon = Icons.Default.Notifications,
+                    bgColor = Color(0xFFFFCDD2), // Light Red
+                    borderColor = Color(0xFFD32F2F), // Red
+                    iconBgColor = Color(0xFFEF9A9A),
+                    isAlert = true
+                ))
+            } else {
+                widgets.add(CartoonWidgetData(
+                    title = "¡TODO TRANQUILO!",
+                    description = "No hay exámenes a la vista. Disfruta tu semana.",
+                    icon = Icons.Default.Info,
+                    bgColor = Color(0xFFC8E6C9), // Light Green
+                    borderColor = Color(0xFF388E3C), // Green
+                    iconBgColor = Color(0xFFA5D6A7)
+                ))
+            }
+
+            // 4. Critical Absences Widget
+            val criticalSubject = subjects.minByOrNull { sub ->
+                val limit = ((100.0 - sub.requiredAttendancePercent) / 100.0) * sub.totalClasses
+                val currentFaltas = absences.count { it.subjectId == sub.id }
+                limit - currentFaltas
+            }
+            if (criticalSubject != null) {
+                val limit = ((100.0 - criticalSubject.requiredAttendancePercent) / 100.0) * criticalSubject.totalClasses
+                val currentFaltas = absences.count { it.subjectId == criticalSubject.id }
+                val remaining = (limit - currentFaltas).toInt()
+                if (remaining <= 3) {
+                    widgets.add(CartoonWidgetData(
+                        title = "¡AL BORDE!",
+                        description = "Te quedan $remaining faltas en ${criticalSubject.name.take(12)}",
+                        icon = Icons.Default.Warning,
+                        bgColor = Color(0xFFFFCC80), // Orange
+                        borderColor = Color(0xFFEF6C00), // Dark Orange
+                        iconBgColor = Color(0xFFFFB74D),
+                        isAlert = true
+                    ))
+                }
+            }
+            
+            // 5. Global Average Widget (Replaced Calendar widget with Progress Widget)
+            val cal = Calendar.getInstance()
+            val currentWeek = ((cal.get(Calendar.DAY_OF_YEAR) % 98) / 7) + 1 // Dummy calculation for week
+            widgets.add(CartoonWidgetData(
+                title = "PROGRESO SEMESTRE",
+                description = "Semana $currentWeek de 14. ¡Vamos!",
+                icon = Icons.Default.Star,
+                bgColor = Color(0xFFB3E5FC),
+                borderColor = Color(0xFF0277BD),
+                iconBgColor = Color(0xFF81D4FA)
+            ))
+
+            // 6. Weather Widget
+            if (isRaining) {
+                widgets.add(CartoonWidgetData(
+                    title = "LLUEVE",
+                    description = "¡Lleva paraguas! El viaje será más lento.",
+                    icon = Icons.Default.Warning,
+                    bgColor = Color(0xFFCFD8DC),
+                    borderColor = Color(0xFF455A64),
+                    iconBgColor = Color(0xFFB0BEC5)
+                ))
+            }
+
+            if (widgets.isNotEmpty()) {
+                DashboardCartoonWidgets(widgets, isRaining)
+            }
+        }
+
+        // Intelligent Attendance Decision / Indicator Card (¿Vale la pena ir hoy?)
+        item {
+                val examToday = remember(assessments) {
+                    assessments.find { ass ->
+                        ass.grade == null && ass.examDate.trim().equals(currentDayCode, ignoreCase = true)
+                    }
+                }
+
+                val adviceData = remember(subjects, absences, attendanceLogs, assessments, isRaining, examToday) {
                 val todayClasses = if (currentDayCode.isEmpty()) {
                     emptyList()
                 } else {
@@ -1149,11 +1594,24 @@ fun DashboardScreen(
                 }
 
                 if (todayClasses.isEmpty()) {
-                    Triple(
-                        "¡Día sin clases!",
-                        "No tenés cursadas registradas para hoy. Buen día para descansar u organizar tus pendientes.",
-                        "discrecional"
-                    )
+                    if (examToday != null) {
+                        val sub = subjects.find { it.id == examToday.subjectId }
+                        Triple(
+                            listOf("Día sin clases, pero... ¡HAY PARCIAL!", "Día libre, excepto por tu evaluación", "¡A estudiar! No hay cursada, hay examen").random(),
+                            "Hoy no tienes clases regulares, pero tienes programado el examen '${examToday.name}' para ${sub?.name ?: "tu materia"}. ¿Por qué no hacemos una sesión de Focus?",
+                            "critico_examen"
+                        )
+                    } else {
+                        Triple(
+                            listOf("¡Día sin clases!", "¡A descansar!", "Día libre a la vista").random(),
+                            listOf(
+                                "No tenés cursadas registradas para hoy. Buen día para descansar u organizar tus pendientes.",
+                                "Hoy no hay que ir a la facu. ¡Aprovecha para adelantar trabajos o dormir un poco más!",
+                                "Tu calendario está libre hoy. ¡Respira hondo y recarga energías!"
+                            ).random(),
+                            "discrecional"
+                        )
+                    }
                 } else {
                     var criticalSubjectName: String? = null
                     var lowestMargin = 999
@@ -1167,29 +1625,33 @@ fun DashboardScreen(
                         }
                     }
 
-                    if (examToday != null) {
-                        val sub = subjects.find { it.id == examToday.subjectId }
+                        if (examToday != null) {
+                            val sub = subjects.find { it.id == examToday.subjectId }
+                            Triple(
+                                listOf("¡HOY RINDES EVALUACIÓN!", "DÍA DE PARCIAL", "¡A DEMOSTRAR LO QUE SABES!").random(),
+                                "Hoy tienes programado el examen '${examToday.name}' para ${sub?.name ?: "tu materia"}. ¡Concéntrate al máximo, no puedes faltar!",
+                                "critico_examen"
+                            )
+                        } else if (criticalSubjectName != null) {
                         Triple(
-                            "🚨 ¡HOY RINDES EVALUACIÓN!",
-                            "Hoy tienes programado el examen '${examToday.name}' para ${sub?.name ?: "tu materia"}. ¡Bajo ninguna circunstancia debes faltar hoy!",
-                            "critico_examen"
-                        )
-                    } else if (criticalSubjectName != null) {
-                        Triple(
-                            "¡ASISTENCIA CRÍTICA!",
-                            "Hoy tenés clases de $criticalSubjectName donde estás al límite de faltas permitidas. ¡Tenés que ir sí o sí!",
+                            listOf("¡ASISTENCIA CRÍTICA!", "ALERTA ROJA", "¡NI SE TE OCURRA FALTAR!").random(),
+                            "Estás al límite de faltas en $criticalSubjectName (te quedan $lowestMargin). ¡Si faltas hoy podrías quedar libre! Corre a clases.",
                             "critico"
                         )
                     } else if (isRaining) {
                         Triple(
-                            "¿Faltamos? (Estadísticas seguras)",
-                            "Hoy cursás ${todayClasses.joinToString { it.name }} pero tenés buen margen ($lowestMargin faltas disponibles) y el clima tiene pronóstico de lluvia. Si lo preferís, podés faltar sin riesgo.",
+                            listOf("¿Faltamos? (Estadísticas seguras)", "Lluvia + Buen Margen = Cama", "Clima hostil").random(),
+                            "Tenés margen seguro ($lowestMargin faltas disponibles) y está lloviendo. Si no tenés ganas de mojarte, los números dicen que podés quedarte en casa.",
                             "discrecional_lluvia"
                         )
                     } else {
                         Triple(
-                            "ASISTENCIA RECOMENDADA",
-                            "Tenés clases de ${todayClasses.joinToString { it.name }}. Tu margen de faltas es cómodo ($lowestMargin restantes), pero ir te evitará perder el hilo.",
+                            listOf("ASISTENCIA RECOMENDADA", "¡A CLASES!", "Día productivo").random(),
+                            listOf(
+                                "Tu margen es cómodo ($lowestMargin restantes). Ir hoy suma para mantener el ritmo.",
+                                "Aprovecha que no llueve y tenés buen margen. ¡A sumar presencias en la facu!",
+                                "Hoy pinta lindo para ir a cursar. ¡Éxitos en tu jornada!"
+                            ).random(),
                             "normal"
                         )
                     }
@@ -1249,18 +1711,21 @@ fun DashboardScreen(
                         }
                         
                         if (isRaining) {
-                            Surface(
-                                color = Color(0x223F51B5),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text(
-                                    text = "☔ Tránsito Lluvioso",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = NavyBlue,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
+                                Surface(
+                                    color = Color(0x223F51B5),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                        Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = NavyBlue, modifier = Modifier.size(12.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Tránsito Lluvioso",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NavyBlue
+                                        )
+                                    }
+                                }
                         }
                     }
                     
@@ -1280,89 +1745,110 @@ fun DashboardScreen(
                         color = NavyBlue.copy(alpha = 0.85f),
                         lineHeight = 20.sp
                     )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // HUGE TRAVEL ETA HUD BLOCK
-                    val hudBgColor = when {
-                        minutesDiff < 0 -> Color(0xFFFFDCDA) // Warn Crimson Pink
-                        minutesDiff <= 10 -> Color(0xFFFFF3CD) // Warm Yellowish Amber
-                        else -> Color(0xFFD4EDDA) // Easy Green
-                    }
-                    val hudBorderColor = when {
-                        minutesDiff < 0 -> Terracotta
-                        minutesDiff <= 10 -> Color(0xFF856404)
-                        else -> DarkGreen
-                    }
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = hudBgColor),
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, hudBorderColor.copy(alpha = 0.4f))
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "REPORTE DE RUTA Y HORARIO",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = hudBorderColor
-                                )
-                                Text(
-                                    text = if (minutesDiff < 0) "⌛ DEMORADO" else "⏱️ A TIEMPO",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = hudBorderColor
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            
-                            val dynamicStatusLabel = when {
-                                minutesDiff < 0 -> "⚠️ LLEGAS TARDE POR ${-minutesDiff} MIN"
-                                minutesDiff <= 10 -> "🚨 MARGEN ESTRECHO DE $minutesDiff MIN"
-                                else -> "✅ BIEN A TIEMPO (+ $minutesDiff MIN)"
-                            }
-
-                            Text(
-                                text = dynamicStatusLabel,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Black,
-                                color = hudBorderColor
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            
-                            Divider(color = hudBorderColor.copy(alpha = 0.15f), thickness = 1.dp)
-                            
-                            Spacer(modifier = Modifier.height(6.dp))
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text("Recorrido de Viaje", fontSize = 11.sp, color = SlateGray)
-                                    Text("$locationBasedTravelMinutes min", fontSize = 13.sp, color = NavyBlue, fontWeight = FontWeight.Bold)
-                                }
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Llegada Estimada", fontSize = 11.sp, color = SlateGray)
-                                    Text(arrivalTimeStr, fontSize = 13.sp, color = NavyBlue, fontWeight = FontWeight.Bold)
-                                }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text("Inicio Clase ($nextClassMateria)", fontSize = 11.sp, color = SlateGray)
-                                    Text(nextClassTime, fontSize = 13.sp, color = NavyBlue, fontWeight = FontWeight.Bold)
-                                }
-                            }
+                    
+                    if (adviceData.third == "critico_examen") {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = onNavigateToFocus,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = NavyBlue, contentColor = Color.White),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Iniciar Modo Focus", fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
 
-                    // Display summary of today's classes if any exist
-                    val todayClasses = if (currentDayCode.isEmpty()) emptyList() else subjects.filter { it.schedule.contains(currentDayCode, ignoreCase = true) }
-                    if (todayClasses.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val todayClassesForHud = if (currentDayCode.isEmpty()) emptyList() else subjects.filter { it.schedule.contains(currentDayCode, ignoreCase = true) }
+
+                    if (todayClassesForHud.isNotEmpty()) {
+                        // HUGE TRAVEL ETA HUD BLOCK
+                        val hudBgColor = Color(0xFFF8F9FA) // Light gray matching palette
+                        val hudBorderColor = NavyBlue
+                        val iconTint = when {
+                            minutesDiff < 0 -> Terracotta
+                            minutesDiff <= 10 -> Color(0xFFE5A800) // Darker yellow/amber
+                            else -> DarkGreen
+                        }
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = hudBgColor),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(imageVector = Icons.Default.LocationOn, contentDescription = null, tint = NavyBlue, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "REPORTE DE RUTA",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NavyBlue
+                                        )
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        val iconStatus = if (minutesDiff < 0) Icons.Default.Warning else Icons.Default.CheckCircle
+                                        Icon(imageVector = iconStatus, contentDescription = null, tint = iconTint, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (minutesDiff < 0) "DEMORADO" else "A TIEMPO",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = iconTint
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                
+                                val dynamicStatusLabel = when {
+                                    minutesDiff < 0 -> "Llegas tarde por ${-minutesDiff} min"
+                                    minutesDiff <= 10 -> "Margen estrecho de $minutesDiff min"
+                                    else -> "Bien a tiempo (+ $minutesDiff min)"
+                                }
+
+                                Text(
+                                    text = dynamicStatusLabel,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NavyBlue
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Divider(color = SlateGray.copy(alpha = 0.2f), thickness = 1.dp)
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text("Recorrido", fontSize = 11.sp, color = SlateGray)
+                                        Text("$locationBasedTravelMinutes min", fontSize = 13.sp, color = NavyBlue, fontWeight = FontWeight.Bold)
+                                    }
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Llegada", fontSize = 11.sp, color = SlateGray)
+                                        Text(arrivalTimeStr, fontSize = 13.sp, color = NavyBlue, fontWeight = FontWeight.Bold)
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("Clase ($nextClassMateria)", fontSize = 11.sp, color = SlateGray)
+                                        Text(nextClassTime, fontSize = 13.sp, color = iconTint, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Display summary of today's classes if any exist
                         Spacer(modifier = Modifier.height(16.dp))
                         Divider(color = accentColor.copy(alpha = 0.15f), thickness = 1.dp)
                         Spacer(modifier = Modifier.height(12.dp))
@@ -1373,17 +1859,17 @@ fun DashboardScreen(
                             color = NavyBlue
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        todayClasses.forEach { sub ->
+                        todayClassesForHud.forEach { sub ->
                             val subAbsTotal = absences.count { it.subjectId == sub.id } + attendanceLogs.count { it.subjectId == sub.id && !it.isPresent }
                             val maxAbs = sub.totalClasses - Math.ceil(sub.totalClasses * (sub.requiredAttendancePercent / 100.0)).toInt()
                             val remainingAbs = maxAbs - subAbsTotal
                             
-                            val feasibilityLabel = when {
-                                examToday?.subjectId == sub.id -> "EXAMEN HOY: NO FALTAR 🚫"
-                                remainingAbs <= 0 -> "FALTAS AGOTADAS: IMPOSIBLE ❌"
-                                remainingAbs == 1 -> "LÍMITE ALCANZADO: CRÍTICO ⚠️"
-                                remainingAbs == 2 -> "RIESGOSO: PRECAUCIÓN 🟡"
-                                else -> "SEGURO: MARGEN EXCELENTE ($remainingAbs restantes) 🟢"
+                            val (feasibilityLabel, feasibilityColor, feasibilityIcon) = when {
+                                examToday?.subjectId == sub.id -> Triple("EXAMEN HOY: NO FALTAR", Terracotta, Icons.Default.Warning)
+                                remainingAbs <= 0 -> Triple("FALTAS AGOTADAS", Terracotta, Icons.Default.Clear)
+                                remainingAbs == 1 -> Triple("CRÍTICO ($remainingAbs rest.)", Terracotta, Icons.Default.Info)
+                                remainingAbs == 2 -> Triple("PRECAUCIÓN ($remainingAbs rest.)", Color(0xFFE5A800), Icons.Default.Info)
+                                else -> Triple("SEGURO ($remainingAbs rest.)", DarkGreen, Icons.Default.CheckCircle)
                             }
                             
                             Card(
@@ -1404,18 +1890,25 @@ fun DashboardScreen(
                                             fontWeight = FontWeight.Bold,
                                             color = NavyBlue
                                         )
+                                        val sessionParsed = sub.sessionsJson.parseSessions().firstOrNull { it.day.equals(currentDayCode, ignoreCase=true) } ?: sub.sessionsJson.parseSessions().firstOrNull()
+                                        val displayTime = sessionParsed?.time ?: "10:00 AM"
+                                        val displayRoom = sessionParsed?.room ?: ""
                                         Text(
-                                            text = "Horario: ${sub.time} | Aula: ${sub.classroom}",
+                                            text = "Horario: $displayTime | Aula: $displayRoom",
                                             fontSize = 11.sp,
                                             color = SlateGray
                                         )
                                     }
-                                    Text(
-                                        text = feasibilityLabel,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (remainingAbs <= 1 || examToday?.subjectId == sub.id) Terracotta else DarkGreen
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = feasibilityLabel,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = feasibilityColor
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(imageVector = feasibilityIcon, contentDescription = null, tint = feasibilityColor, modifier = Modifier.size(14.dp))
+                                    }
                                 }
                             }
                         }
@@ -1431,12 +1924,14 @@ fun DashboardScreen(
                     .fillMaxWidth()
                     .height(145.dp)
                     .shadow(4.dp, RoundedCornerShape(20.dp)),
-                colors = CardDefaults.cardColors(containerColor = Bone),
+                colors = CardDefaults.cardColors(containerColor = NavyBlue),
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    StylizedMapBackground(modifier = Modifier.fillMaxSize())
-
+                    StylizedMapBackground(
+                        modifier = Modifier.fillMaxSize(), 
+                        isUserOnCampus = currentDistanceToCollege != null && currentDistanceToCollege < 0.5
+                    )
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -1449,20 +1944,20 @@ fun DashboardScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text("PROXIMA CLASE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGray, letterSpacing = 1.sp)
+                                Text("PRÓXIMA CLASE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bone.copy(alpha=0.7f), letterSpacing = 1.sp)
                                 Text(
                                     text = nextClassMateria,
                                     style = MaterialTheme.typography.titleLarge,
-                                    color = NavyBlue,
+                                    color = Bone,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                             
                             Surface(
                                 color = when (travelStatus) {
-                                    "normal" -> MintGreen.copy(alpha = 0.2f)
-                                    "advertencia" -> Amber.copy(alpha = 0.2f)
-                                    else -> Terracotta.copy(alpha = 0.2f)
+                                    "normal" -> MintGreen
+                                    "advertencia" -> Amber
+                                    else -> Terracotta
                                 },
                                 shape = RoundedCornerShape(8.dp)
                             ) {
@@ -1474,22 +1969,12 @@ fun DashboardScreen(
                                         modifier = Modifier
                                             .size(8.dp)
                                             .clip(CircleShape)
-                                            .background(
-                                                when (travelStatus) {
-                                                    "normal" -> MintGreen
-                                                    "advertencia" -> Amber
-                                                    else -> Terracotta
-                                                }
-                                            )
+                                            .background(Color.White)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = travelStatus.replaceFirstChar { it.uppercase() },
-                                        color = when (travelStatus) {
-                                            "normal" -> DarkGreen
-                                            "advertencia" -> Color(0xFFB07219)
-                                            else -> Terracotta
-                                        },
+                                        color = Color.White,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp
                                     )
@@ -1504,14 +1989,14 @@ fun DashboardScreen(
                         ) {
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = SlateGray, modifier = Modifier.size(16.dp))
+                                    Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = Bone.copy(alpha=0.7f), modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("$nextClassTime — Viaje: $locationBasedTravelMinutes min", fontSize = 13.sp, color = NavyBlue, fontWeight = FontWeight.Bold)
+                                    Text("$nextClassTime — Viaje: $locationBasedTravelMinutes min", fontSize = 13.sp, color = Bone, fontWeight = FontWeight.Bold)
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                                    Icon(imageVector = Icons.Default.LocationOn, contentDescription = null, tint = SlateGray, modifier = Modifier.size(16.dp))
+                                    Icon(imageVector = Icons.Default.LocationOn, contentDescription = null, tint = Bone.copy(alpha=0.7f), modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("$nextClassRoom • Clase en $remainingToClass min", fontSize = 12.sp, color = SlateGray)
+                                    Text("$nextClassRoom • Clase en $remainingToClass min", fontSize = 12.sp, color = Bone.copy(alpha=0.7f))
                                 }
                             }
                             
@@ -1662,37 +2147,22 @@ fun DashboardScreen(
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        val isNormal = arrivalMarginPref == "normal"
-                        Button(
-                            onClick = { viewModel.setArrivalMarginPreference("normal") },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isNormal) DarkGreen else Color(0xFFF0F4F8),
-                                contentColor = if (isNormal) Bone else SlateGray
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f).height(44.dp).border(
-                                1.dp, if (isNormal) Color.Transparent else Color(0xFFDCE3E9), RoundedCornerShape(12.dp)
-                            )
-                        ) {
-                            Text("Normal (Por defecto)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        val isTemprano = arrivalMarginPref == "temprano"
-                        Button(
-                            onClick = { viewModel.setArrivalMarginPreference("temprano") },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isTemprano) DarkGreen else Color(0xFFF0F4F8),
-                                contentColor = if (isTemprano) Bone else SlateGray
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f).height(44.dp).border(
-                                1.dp, if (isTemprano) Color.Transparent else Color(0xFFDCE3E9), RoundedCornerShape(12.dp)
-                            )
-                        ) {
-                            Text("Temprano (+10m)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Text(
+                            text = "Llegar Temprano (+10m)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = NavyBlue
+                        )
+                        Switch(
+                            checked = arrivalMarginPref == "temprano",
+                            onCheckedChange = { isChecked ->
+                                viewModel.setArrivalMarginPreference(if (isChecked) "temprano" else "normal")
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Bone, checkedTrackColor = DarkGreen)
+                        )
                     }
                 }
             }
@@ -1720,7 +2190,15 @@ fun DashboardScreen(
                     }
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    val weekdays = listOf("L" to 0.45f, "M" to 0.65f, "X" to 0.90f, "J" to 0.25f, "V" to 0.60f)
+                    val classCounts = remember(subjects) {
+                        listOf("Lu" to "L", "Ma" to "M", "Mi" to "X", "Ju" to "J", "Vi" to "V", "Sá" to "S").map { (code, letter) ->
+                            val count = subjects.count { it.schedule.contains(code, ignoreCase = true) }
+                            letter to count
+                        }
+                    }
+                    val maxClasses = classCounts.maxOfOrNull { it.second }?.takeIf { it > 0 } ?: 1
+                    val weekdaysLayout = classCounts.map { it.first to (it.second.toFloat() / maxClasses.toFloat()) }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1728,8 +2206,8 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        weekdays.forEach { (day, fraction) ->
-                            val isTodayX = day == "X" 
+                        weekdaysLayout.forEach { (day, fraction) ->
+                            val drawFraction = fraction.coerceAtLeast(0.02f)
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Bottom,
@@ -1737,17 +2215,17 @@ fun DashboardScreen(
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxHeight(fraction)
+                                        .fillMaxHeight(drawFraction)
                                         .width(36.dp)
                                         .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-                                        .background(if (isTodayX) DarkGreen else SlateGray.copy(alpha = 0.5f))
+                                        .background(if (fraction > 0f) SlateGray.copy(alpha = 0.5f) else Bone.copy(alpha = 0.5f))
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = day,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isTodayX) DarkGreen else SlateGray
+                                    color = if (fraction > 0f) NavyBlue else SlateGray.copy(alpha = 0.5f)
                                 )
                             }
                         }
@@ -1871,52 +2349,6 @@ fun DashboardScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Geographic Selection Mode Controls (Real vs Simulated)
-                    Text(
-                        text = "Probar distancias (Simulador de Ubicación):",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SlateGray,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        listOf(
-                            "real" to "GPS Real",
-                            "lejos" to "Lejos",
-                            "moderado" to "Medio",
-                            "cerca" to "Cerca",
-                            "campus" to "Campus"
-                        ).forEach { (mode, label) ->
-                            val isSelected = selectedSimulatedDistanceMode == mode
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) DarkGreen else Bone)
-                                    .clickable {
-                                        selectedSimulatedDistanceMode = mode
-                                        if (mode == "real") {
-                                            requestRealGPSTracking()
-                                        }
-                                    }
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) Bone else SlateGray
-                                )
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -1954,9 +2386,9 @@ fun DashboardScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = NavyBlue),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Bone, modifier = Modifier.size(18.dp))
+                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Comenzar Viaje Casa ➔ Universidad", color = Bone, fontWeight = FontWeight.Bold)
+                            Text("Comenzar Viaje Casa -> Universidad", color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     } else {
                         // Trip is active! Show ticking elapsed travel stopwatch
@@ -2237,16 +2669,19 @@ fun DashboardScreen(
 }
 
 // Helper Subject Color Palette for Grid Cards
-fun getSubjectColorPalette(subjectName: String): Pair<Color, Color> {
-    val name = subjectName.lowercase()
-    return when {
-        name.contains("alge") || name.contains("álge") -> Pair(Color(0xFFE8F5E9), Color(0xFF2E7D32)) // Soft Green
-        name.contains("físi") || name.contains("fisi") -> Pair(Color(0xFFE3F2FD), Color(0xFF1565C0)) // Soft Blue
-        name.contains("mate") -> Pair(Color(0xFFFFF3E0), Color(0xFFE65100)) // Soft Orange
-        name.contains("quím") || name.contains("quim") -> Pair(Color(0xFFF3E5F5), Color(0xFF7B1FA2)) // Soft Purple
-        name.contains("prog") || name.contains("sist") -> Pair(Color(0xFFE0F7FA), Color(0xFF00838F)) // Soft Cyan
-        else -> Pair(Color(0xFFFFEBEE), Color(0xFFC62828)) // Soft Red / Coral
-    }
+fun getSubjectColorPalette(colorHex: String): Pair<Color, Color> {
+    val hex = if (colorHex.isBlank() || !colorHex.startsWith("#")) "#E8F5E9" else colorHex
+    val parsedColor = try { android.graphics.Color.parseColor(hex) } catch (e: Exception) { android.graphics.Color.parseColor("#E8F5E9") }
+    val bgColor = Color(parsedColor)
+    
+    // Calculate a darker accent color for text/borders
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(parsedColor, hsv)
+    hsv[1] = (hsv[1] + 0.4f).coerceAtMost(1f) // Increase saturation
+    hsv[2] = (hsv[2] - 0.4f).coerceAtLeast(0f) // Decrease value (brightness)
+    val accentColor = Color(android.graphics.Color.HSVToColor(hsv))
+
+    return Pair(bgColor, accentColor)
 }
 
 @Composable
@@ -2274,19 +2709,25 @@ fun SubjectGridItem(
     val isWarning = remaining <= 2 && remaining > 0
     val isCritical = remaining <= 0
 
-    val colors = getSubjectColorPalette(sub.name)
+    val colors = getSubjectColorPalette(sub.colorHex)
     val bgColor = colors.first
     val accentColor = colors.second
 
+    val hapticFeedback = LocalHapticFeedback.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onSubjectClick(sub.id) }
+            .clickable {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                onSubjectClick(sub.id)
+            }
+            .animateContentSize()
             .shadow(4.dp, RoundedCornerShape(18.dp)),
         colors = CardDefaults.cardColors(containerColor = bgColor),
         shape = RoundedCornerShape(18.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
+            val defaultSession = sub.sessionsJson.parseSessions().firstOrNull()
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2302,7 +2743,7 @@ fun SubjectGridItem(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = sub.classroom,
+                        text = defaultSession?.room ?: "",
                         fontSize = 11.sp,
                         color = SlateGray,
                         maxLines = 1,
@@ -2327,7 +2768,7 @@ fun SubjectGridItem(
 
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "${sub.schedule} • ${sub.time}",
+                text = "${sub.schedule} • ${defaultSession?.time ?: "10:00 AM"} | ${defaultSession?.room ?: ""}",
                 fontSize = 10.sp,
                 color = SlateGray,
                 fontWeight = FontWeight.SemiBold
@@ -2364,12 +2805,13 @@ fun SubjectGridItem(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Asistido: $subPresCount",
+                    text = "Has asistido a $subPresCount/${sub.totalClasses} clases",
                     fontSize = 10.sp,
-                    color = SlateGray
+                    color = SlateGray,
+                    fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = if (remaining > 0) "$remaining de $maxAbs" else "Crítico",
+                    text = if (remaining > 0) "Quedan $remaining de $maxAbs faltas" else "Estado Crítico",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (isCritical) Terracotta else NavyBlue
@@ -2383,10 +2825,14 @@ fun SubjectGridItem(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                val hapticFeedback = LocalHapticFeedback.current
                 IconButton(
-                    onClick = { viewModel.registerAttendanceLog(sub.id, isPresent = true) },
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.registerAttendanceLog(sub.id, isPresent = true)
+                    },
                     modifier = Modifier
-                        .weight(1.1f)
+                        .weight(1f)
                         .height(34.dp)
                         .background(accentColor, RoundedCornerShape(8.dp))
                 ) {
@@ -2398,9 +2844,12 @@ fun SubjectGridItem(
                 }
 
                 IconButton(
-                    onClick = { viewModel.registerAttendanceLog(sub.id, isPresent = false) },
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.registerAttendanceLog(sub.id, isPresent = false)
+                    },
                     modifier = Modifier
-                        .weight(0.9f)
+                        .weight(1f)
                         .height(34.dp)
                         .background(Color.White, RoundedCornerShape(8.dp))
                         .border(1.dp, Terracotta, RoundedCornerShape(8.dp))
@@ -2411,14 +2860,40 @@ fun SubjectGridItem(
                         Text("Falté", fontSize = 10.sp, color = Terracotta, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                IconButton(
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                        val date = java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()).format(java.util.Date())
+                        viewModel.registerAttendanceLog(sub.id, isPresent = true, dateStr = "$date (Justificada)")
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(34.dp)
+                        .background(Color.White, RoundedCornerShape(8.dp))
+                        .border(1.dp, Amber, RoundedCornerShape(8.dp))
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                        Icon(imageVector = Icons.Default.Info, contentDescription = "Justificada", tint = Amber, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("Justificada", fontSize = 10.sp, color = Amber, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }
 }
 
 // 3. ASISTENCIA OVERVIEW SCREEN
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> Unit) {
+fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> Unit, onConfigureRoute: () -> Unit) {
+    val semesterState by viewModel.semesterState.collectAsStateWithLifecycle()
+    if (semesterState == "Vacaciones") {
+        VacationScreen(viewModel = viewModel, onConfigureRoute = onConfigureRoute)
+        return
+    }
+
     val subjects by viewModel.subjects.collectAsStateWithLifecycle()
     val absences by viewModel.absences.collectAsStateWithLifecycle()
     val attendanceLogs by viewModel.attendanceLogs.collectAsStateWithLifecycle()
@@ -2462,7 +2937,7 @@ fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int)
         item {
             Card(
                 modifier = Modifier.fillMaxWidth().shadow(4.dp, RoundedCornerShape(24.dp)),
-                colors = CardDefaults.cardColors(containerColor = DarkGreen),
+                colors = CardDefaults.cardColors(containerColor = NavyBlue),
                 shape = RoundedCornerShape(24.dp)
             ) {
                 Row(
@@ -2486,8 +2961,13 @@ fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int)
                             )
                             // Progress
                             val swept = (globalAttendancePercent / 100f) * 270f
+                            val gaugeColor = when {
+                                globalAttendancePercent >= 85 -> MintGreen
+                                globalAttendancePercent >= 70 -> Amber
+                                else -> Terracotta
+                            }
                             drawArc(
-                                color = MintGreen,
+                                color = gaugeColor,
                                 startAngle = 135f,
                                 sweepAngle = swept,
                                 useCenter = false,
@@ -2609,13 +3089,11 @@ fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int)
 
                 if (showAddSubjectDialog) {
                     var newSubName by remember { mutableStateOf("") }
-                    var newSubClassroom by remember { mutableStateOf("Aula 102, Edificio B") }
-                    var newSubClassesTotal by remember { mutableStateOf("32") }
-                    var newSubMinPercent by remember { mutableStateOf("75") }
+                    var selectedColor by remember { mutableStateOf("#E8F5E9") } // Default light green
                     
-                    var newSubDays by remember { mutableStateOf(setOf("Lu", "Mi")) }
-                    var newSubBlock by remember { mutableStateOf("B2") }
-                    var newSubCustomTime by remember { mutableStateOf("10:00 AM") }
+                    val sessionsList = remember { mutableStateListOf<com.example.data.ClassSessionDetails>(com.example.data.ClassSessionDetails("Lu", "M1", "")) }
+                    
+                    val availableColors = listOf("#E8F5E9", "#E3F2FD", "#FFF3E0", "#F3E5F5", "#E0F7FA", "#FFEBEE", "#FFF9C4")
 
                     AlertDialog(
                         onDismissRequest = { showAddSubjectDialog = false },
@@ -2626,84 +3104,92 @@ fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int)
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 item {
-                                    OutlinedTextField(
-                                        value = newSubName,
-                                        onValueChange = { newSubName = it },
-                                        label = { Text("Nombre de la Materia") },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        singleLine = true,
-                                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
-                                    )
+                                    var expanded by remember { mutableStateOf(false) }
+                                    val passedSubjects by viewModel.passedSubjects.collectAsStateWithLifecycle()
+                                    val suggestions = com.example.data.CurriculumData.industrialEngineering
+                                        .filter { !passedSubjects.contains(it.code) && !subjects.any { s -> s.name == it.name } }
+                                        .map { it.name }
+
+                                    ExposedDropdownMenuBox(
+                                        expanded = expanded,
+                                        onExpandedChange = { expanded = !expanded }
+                                    ) {
+                                        OutlinedTextField(
+                                            value = newSubName,
+                                            onValueChange = { newSubName = it },
+                                            label = { Text("Nombre de la Materia") },
+                                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                                            singleLine = true,
+                                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen),
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
+                                        )
+                                        ExposedDropdownMenu(
+                                            expanded = expanded,
+                                            onDismissRequest = { expanded = false }
+                                        ) {
+                                            suggestions.filter { it.contains(newSubName, ignoreCase = true) }.take(5).forEach { selectionOption ->
+                                                DropdownMenuItem(
+                                                    text = { Text(selectionOption) },
+                                                    onClick = {
+                                                        newSubName = selectionOption
+                                                        expanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                                 
                                 item {
-                                    VisualSchedulePicker(
-                                        selectedDays = newSubDays,
-                                        onDaysChanged = { newSubDays = it },
-                                        selectedBlock = newSubBlock,
-                                        onBlockChanged = { newSubBlock = it },
-                                        customTime = newSubCustomTime,
-                                        onCustomTimeChanged = { newSubCustomTime = it },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-
-                                item {
-                                    OutlinedTextField(
-                                        value = newSubClassroom,
-                                        onValueChange = { newSubClassroom = it },
-                                        label = { Text("Aula / Edificio") },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        singleLine = true,
-                                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
-                                    )
-                                }
-
-                                item {
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        OutlinedTextField(
-                                            value = newSubClassesTotal,
-                                            onValueChange = { newSubClassesTotal = it.filter { char -> char.isDigit() } },
-                                            label = { Text("Clases totales") },
-                                            modifier = Modifier.weight(1f),
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            singleLine = true,
-                                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
-                                        )
-                                        OutlinedTextField(
-                                            value = newSubMinPercent,
-                                            onValueChange = { newSubMinPercent = it.filter { char -> char.isDigit() } },
-                                            label = { Text("Mín. Asistencia %") },
-                                            modifier = Modifier.weight(1f),
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            singleLine = true,
-                                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
-                                        )
+                                    Text("Color de la materia:", fontSize = 14.sp, color = NavyBlue, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        availableColors.forEach { hex ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(android.graphics.Color.parseColor(hex)))
+                                                    .border(
+                                                        width = if (selectedColor == hex) 2.dp else 1.dp,
+                                                        color = if (selectedColor == hex) DarkGreen else Color.LightGray,
+                                                        shape = CircleShape
+                                                    )
+                                                    .clickable { selectedColor = hex },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (selectedColor == hex) {
+                                                    Icon(Icons.Default.Check, contentDescription = null, tint = DarkGreen, modifier = Modifier.size(20.dp))
+                                                }
+                                            }
+                                        }
                                     }
+                                }
+
+                                item {
+                                    SessionEditor(sessions = sessionsList, allSubjects = subjects)
+                                    
+                                    val computedClasses = sessionsList.size * 14
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Clases totales estimadas (14 semanas): $computedClasses", fontSize = 12.sp, color = SlateGray)
+                                    Text("Asistencia mínima requerida: 70%", fontSize = 12.sp, color = SlateGray)
                                 }
                             }
                         },
                         confirmButton = {
                             Button(
                                 onClick = {
-                                    if (newSubName.isNotBlank() && newSubDays.isNotEmpty()) {
-                                        val computedSchedule = newSubDays.joinToString(", ")
-                                        val computedTime = when (newSubBlock) {
-                                            "B1" -> "07:00 AM"
-                                            "B2" -> "08:40 AM"
-                                            "B3" -> "10:20 AM"
-                                            "B4" -> "12:45 PM"
-                                            "B5" -> "02:25 PM"
-                                            "B6" -> "04:05 PM"
-                                            else -> newSubCustomTime
-                                        }
+                                    if (newSubName.isNotBlank() && sessionsList.isNotEmpty()) {
+                                        val computedSchedule = sessionsList.distinctBy { it.day }.joinToString(", ") { it.day }
+                                        val computedClasses = sessionsList.size * 14
+                                        val jsonString = sessionsList.toJsonString()
                                         viewModel.addSubject(
                                             name = newSubName,
                                             schedule = computedSchedule,
-                                            time = computedTime,
-                                            requiredAttendancePercent = newSubMinPercent.toIntOrNull() ?: 75,
-                                            totalClasses = newSubClassesTotal.toIntOrNull() ?: 32,
-                                            classroom = newSubClassroom
+                                            sessionsJson = jsonString,
+                                            requiredAttendancePercent = 70,
+                                            totalClasses = computedClasses,
+                                            colorHex = selectedColor
                                         )
                                         showAddSubjectDialog = false
                                     }
@@ -2741,26 +3227,24 @@ fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int)
             }
         } else {
             val chunkedSubjects = subjects.chunked(2)
-            chunkedSubjects.forEach { pair ->
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        pair.forEach { sub ->
-                            Box(modifier = Modifier.weight(1f)) {
-                                SubjectGridItem(
-                                    sub = sub,
-                                    absences = absences,
-                                    attendanceLogs = attendanceLogs,
-                                    viewModel = viewModel,
-                                    onSubjectClick = onSubjectClick
-                                )
-                            }
+            items(chunkedSubjects, key = { it.first().id }) { pair ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().animateItem(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    pair.forEach { sub ->
+                        Box(modifier = Modifier.weight(1f)) {
+                            SubjectGridItem(
+                                sub = sub,
+                                absences = absences,
+                                attendanceLogs = attendanceLogs,
+                                viewModel = viewModel,
+                                onSubjectClick = onSubjectClick
+                            )
                         }
-                        if (pair.size < 2) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
+                    }
+                    if (pair.size < 2) {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -2825,45 +3309,126 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                 IconButton(onClick = onBack) {
                     Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back", tint = NavyBlue)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = subject.name, style = MaterialTheme.typography.headlineMedium, color = NavyBlue, fontWeight = FontWeight.Bold)
-            }
-            
-            var showDeleteConfirmation by remember { mutableStateOf(false) }
-            
-            IconButton(onClick = { showDeleteConfirmation = true }) {
-                Icon(imageVector = Icons.Default.Delete, contentDescription = "Eliminar materia", tint = Terracotta)
-            }
-            
-            if (showDeleteConfirmation) {
-                AlertDialog(
-                    onDismissRequest = { showDeleteConfirmation = false },
-                    title = { Text("Eliminar materia", color = NavyBlue, fontWeight = FontWeight.Bold) },
-                    text = { Text("¿Deseas eliminar definitivamente ${subject.name}? Perderás todas sus asistencias registradas y exámenes.", color = SlateGray) },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                viewModel.deleteSubject(subject)
-                                showDeleteConfirmation = false
-                                onBack()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Terracotta)
-                        ) {
-                            Text("Confirmar", color = Bone)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showDeleteConfirmation = false }) {
-                            Text("Cancelar", color = SlateGray)
-                        }
-                    },
-                    containerColor = Color.White
+                Text(
+                    text = subject.name,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = NavyBlue,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
+            
+            Row {
+                var showEditScheduleDialog by remember { mutableStateOf(false) }
+                IconButton(onClick = { showEditScheduleDialog = true }) {
+                    Icon(imageVector = Icons.Default.DateRange, contentDescription = "Editar Horario", tint = NavyBlue)
+                }
+                
+                if (showEditScheduleDialog) {
+                    var editingSessions by remember { mutableStateOf(subject.sessionsJson.parseSessions().toMutableStateList()) }
+                    if (editingSessions.isEmpty()) {
+                        editingSessions.add(com.example.data.ClassSessionDetails("Lu", "M1", ""))
+                    }
+                    AlertDialog(
+                        onDismissRequest = { showEditScheduleDialog = false },
+                        title = { Text("Editar Horario", color = NavyBlue, fontWeight = FontWeight.Bold) },
+                        text = {
+                            LazyColumn {
+                                item {
+                                    SessionEditor(
+                                        sessions = editingSessions,
+                                        allSubjects = subjects
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val computedSchedule = editingSessions.distinctBy { it.day }.joinToString(", ") { it.day }
+                                    val computedClasses = editingSessions.size * 14
+                                    val jsonString = editingSessions.toList().toJsonString()
+                                    viewModel.updateSubject(
+                                        subject.copy(
+                                            schedule = if (computedSchedule.isEmpty()) "Sin horario" else computedSchedule,
+                                            sessionsJson = jsonString,
+                                            totalClasses = computedClasses
+                                        )
+                                    )
+                                    showEditScheduleDialog = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = DarkGreen)
+                            ) {
+                                Text("Guardar", color = Color.White)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showEditScheduleDialog = false }) {
+                                Text("Cancelar", color = SlateGray)
+                            }
+                        }
+                    )
+                }
+
+                var showDeleteConfirmation by remember { mutableStateOf(false) }
+                
+                IconButton(onClick = { showDeleteConfirmation = true }) {
+                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Eliminar materia", tint = Terracotta)
+                }
+                
+                if (showDeleteConfirmation) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteConfirmation = false },
+                        title = { Text("Eliminar materia", color = NavyBlue, fontWeight = FontWeight.Bold) },
+                        text = { Text("¿Deseas eliminar definitivamente ${subject.name}? Perderás todas sus asistencias registradas y exámenes.", color = SlateGray) },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    viewModel.deleteSubject(subject)
+                                    showDeleteConfirmation = false
+                                    onBack()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Terracotta)
+                            ) {
+                                Text("Confirmar", color = Color.White)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDeleteConfirmation = false }) {
+                                Text("Cancelar", color = SlateGray)
+                            }
+                        },
+                        containerColor = Color.White
+                    )
+                }
+            }
+        }
+        
+        val criticality = calculateSubjectCriticality(subject.name)
+        val criticalityColor = when (criticality) {
+            "Alta (Pre-requisito crítico)" -> Terracotta
+            "Media" -> Color(0xFFF57C00) // Orange
+            else -> DarkGreen
+        }
+        
+        Surface(
+            color = criticalityColor.copy(alpha = 0.15f),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.padding(bottom = 16.dp)
+        ) {
+            Text(
+                text = "Importancia en el pensum: $criticality",
+                color = criticalityColor,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
         }
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -2888,7 +3453,7 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                 ) {
                     Column {
                         Text("Clases Asistidas", fontSize = 12.sp, color = SlateGray)
-                        Text("$totalPresCount clases", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = DarkGreen)
+                        Text("$totalPresCount clases", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = NavyBlue)
                     }
                     Column {
                         Text("Tus Faltas", fontSize = 12.sp, color = SlateGray)
@@ -2906,10 +3471,10 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Asistencia actual: ${String.format(Locale.US, "%.1f", currentRate)}%",
+                    text = if (totalSessionsHeld > 0) "Asistencia actual: ${String.format(Locale.US, "%.1f", currentRate)}%" else "Asistencia actual: Sin datos",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = if (currentRate >= subject.requiredAttendancePercent) DarkGreen else Terracotta
+                    color = if (totalSessionsHeld == 0) SlateGray else if (currentRate >= subject.requiredAttendancePercent) DarkGreen else Terracotta
                 )
             }
         }
@@ -2958,43 +3523,73 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                 modifier = Modifier.weight(0.4f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(filteredLogs) { item ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Bone)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = if (item.isPresent) Icons.Default.CheckCircle else Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = if (item.isPresent) DarkGreen else Terracotta
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = if (item.isPresent) "Asistió: ${item.date}" else "Falta registrada: ${item.date}",
-                                    fontWeight = FontWeight.Bold,
-                                    color = NavyBlue
-                                )
-                            }
-                            IconButton(
-                                onClick = {
+                items(filteredLogs, key = { "" + it.id + "_" + it.isLegacy }) { item ->
+                    val hapticFeedback = LocalHapticFeedback.current
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { dismissValue ->
+                            when (dismissValue) {
+                                SwipeToDismissBoxValue.EndToStart -> {
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                                     if (item.isLegacy) {
                                         viewModel.deleteAbsence(item.id)
                                     } else {
                                         viewModel.deleteAttendanceLog(item.id)
                                     }
+                                    true
                                 }
+                                else -> false
+                            }
+                        }
+                    )
+                    
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = false,
+                        backgroundContent = {
+                            val color by animateColorAsState(
+                                when (dismissState.targetValue) {
+                                    SwipeToDismissBoxValue.EndToStart -> Terracotta
+                                    else -> Color.Transparent
+                                }
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(color, RoundedCornerShape(12.dp))
+                                    .padding(end = 16.dp),
+                                contentAlignment = Alignment.CenterEnd
                             ) {
-                                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = SlateGray)
+                                Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = Color.White)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().animateItem()
+                    ) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Bone)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = if (item.isPresent) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = if (item.isPresent) DarkGreen else Terracotta
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = if (item.isPresent) "Asistió: ${item.date}" else "Falta registrada: ${item.date}",
+                                        fontWeight = FontWeight.Bold,
+                                        color = NavyBlue
+                                    )
+                                }
                             }
                         }
                     }
@@ -3099,14 +3694,19 @@ fun SubjectGradeGridCard(
     val roundedGrade = String.format(Locale.US, "%.1f", gradeNeeded)
     val isImpossible = gradeNeeded > 10.0
 
-    val colors = getSubjectColorPalette(sub.name)
+    val colors = getSubjectColorPalette(sub.colorHex)
     val bgColor = colors.first
     val accentColor = colors.second
 
+    val hapticFeedback = LocalHapticFeedback.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick(sub.id) }
+            .clickable {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick(sub.id)
+            }
+            .animateContentSize()
             .shadow(3.dp, RoundedCornerShape(16.dp)),
         colors = CardDefaults.cardColors(containerColor = bgColor),
         shape = RoundedCornerShape(16.dp)
@@ -3127,8 +3727,9 @@ fun SubjectGradeGridCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    val defaultSession = sub.sessionsJson.parseSessions().firstOrNull()
                     Text(
-                        text = sub.classroom,
+                        text = defaultSession?.room ?: "",
                         fontSize = 10.sp,
                         color = SlateGray,
                         maxLines = 1,
@@ -3293,9 +3894,95 @@ fun SubjectGradeGridCard(
 }
 
 @Composable
-fun GradesOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> Unit) {
+fun VacationScreen(viewModel: UniBuddyViewModel, onConfigureRoute: () -> Unit) {
+    val passedSubjects by viewModel.passedSubjects.collectAsStateWithLifecycle()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Bone)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(Icons.Default.Star, contentDescription = null, tint = NavyBlue, modifier = Modifier.size(80.dp))
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "¡Estás en Vacaciones!",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = NavyBlue
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Relájate y disfruta. UniBuddy te espera cuando inicies tu nuevo semestre.",
+            fontSize = 16.sp,
+            color = SlateGray,
+            textAlign = TextAlign.Center
+        )
+        
+        if (passedSubjects.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(24.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, SlateGray.copy(alpha = 0.2f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
+                    Text("Historial Académico", style = MaterialTheme.typography.titleMedium, color = NavyBlue, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(passedSubjects.toList()) { subCode ->
+                            val subjectName = com.example.data.CurriculumData.industrialEngineering.find { it.code == subCode }?.name ?: subCode
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = DarkGreen, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(subjectName, color = SlateGray, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(48.dp))
+        
+        Button(
+            onClick = { viewModel.startNewSemester() },
+            colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth().height(56.dp)
+        ) {
+            Text("Iniciar Nuevo Semestre", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        OutlinedButton(
+            onClick = onConfigureRoute,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            border = BorderStroke(1.dp, NavyBlue)
+        ) {
+            Text("Ir a Configuración", color = NavyBlue)
+        }
+    }
+}
+
+@Composable
+fun GradesOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> Unit, onConfigureRoute: () -> Unit) {
+    val semesterState by viewModel.semesterState.collectAsStateWithLifecycle()
+    if (semesterState == "Vacaciones") {
+        VacationScreen(viewModel = viewModel, onConfigureRoute = onConfigureRoute)
+        return
+    }
+
     val subjects by viewModel.subjects.collectAsStateWithLifecycle()
     val allAssessments by viewModel.assessments.collectAsStateWithLifecycle(emptyList())
+    var searchQuery by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -3304,6 +3991,23 @@ fun GradesOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> 
     ) {
         Text(text = "Mis Notas", style = MaterialTheme.typography.headlineLarge, color = NavyBlue, fontWeight = FontWeight.Bold)
         Text(text = "Un resumen detallado del rendimiento de tus exámenes y notas académicas.", style = MaterialTheme.typography.bodyMedium, color = SlateGray)
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Buscar materia o examen...") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Buscar") },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = NavyBlue,
+                unfocusedBorderColor = SlateGray.copy(alpha = 0.5f),
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White
+            ),
+            shape = RoundedCornerShape(12.dp)
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -3420,15 +4124,23 @@ fun GradesOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> 
             }
 
             // Grid layout (Cuadrícula of 2 columns) - Chunked
-            val chunkedSubjects = remember(subjects) { subjects.chunked(2) }
+            val filteredSubjects = remember(subjects, searchQuery, allAssessments) {
+                if (searchQuery.isBlank()) subjects else {
+                    subjects.filter { sub ->
+                        sub.name.contains(searchQuery, ignoreCase = true) ||
+                        allAssessments.filter { it.subjectId == sub.id }.any { it.name.contains(searchQuery, ignoreCase = true) }
+                    }
+                }
+            }
+            val chunkedSubjects = remember(filteredSubjects) { filteredSubjects.chunked(2) }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(chunkedSubjects) { rowSubjects ->
+                items(chunkedSubjects, key = { it.first().id }) { rowSubjects ->
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().animateItem(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         rowSubjects.forEach { sub ->
@@ -3562,9 +4274,9 @@ fun SubjectGradesScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: ()
                 }
             }
         } else {
-            items(assessments) { ass ->
+            items(assessments, key = { it.id }) { ass ->
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().animateItem(),
                     colors = CardDefaults.cardColors(containerColor = Bone),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -3591,7 +4303,7 @@ fun SubjectGradesScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: ()
                             Text(
                                 text = "Nota: ${ass.grade ?: "Pendiente"}",
                                 style = MaterialTheme.typography.titleMedium,
-                                color = DarkGreen,
+                                color = NavyBlue,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -3675,8 +4387,10 @@ fun SubjectGradesScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: ()
 
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    val hapticFeedback = LocalHapticFeedback.current
                     Button(
                         onClick = {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                             if (examName.isNotBlank() && examPercent.isNotBlank()) {
                                 val percentVal = examPercent.toDoubleOrNull() ?: 25.0
                                 val gradeVal = examGrade.toDoubleOrNull()
@@ -3961,18 +4675,21 @@ fun SubjectGradesScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: ()
 
 // 7. CONFIGURACION TAB SCREEN
 @Composable
-fun ConfigTabScreen(viewModel: UniBuddyViewModel) {
+fun ConfigTabScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit) {
     val username by viewModel.username.collectAsStateWithLifecycle()
     val origin by viewModel.origin.collectAsStateWithLifecycle()
     val destination by viewModel.destination.collectAsStateWithLifecycle()
     val baseTravelTime by viewModel.baseTravelTime.collectAsStateWithLifecycle()
     val googleMapsApiKey by viewModel.googleMapsApiKey.collectAsStateWithLifecycle()
+    val semesterState by viewModel.semesterState.collectAsStateWithLifecycle()
+    val currentWeek by viewModel.currentWeekOfSemester.collectAsStateWithLifecycle()
 
     var editingUsername by remember { mutableStateOf(username) }
     var editingOrigin by remember { mutableStateOf(origin) }
     var editingDestination by remember { mutableStateOf(destination) }
     var editingTravelMinutes by remember { mutableStateOf(baseTravelTime.toString()) }
     var editingGoogleMapsApiKey by remember { mutableStateOf(googleMapsApiKey) }
+    var editingCurrentWeek by remember { mutableStateOf(if (currentWeek > 0) currentWeek.toString() else "") }
 
     var feedbackMsg by remember { mutableStateOf("") }
     var showDialog by remember { mutableStateOf(false) }
@@ -4007,6 +4724,18 @@ fun ConfigTabScreen(viewModel: UniBuddyViewModel) {
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
                     )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = editingCurrentWeek,
+                        onValueChange = { editingCurrentWeek = it.filter { char -> char.isDigit() } },
+                        label = { Text("Semana actual del semestre (Ej: 3)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
+                    )
                 }
             }
         }
@@ -4021,23 +4750,27 @@ fun ConfigTabScreen(viewModel: UniBuddyViewModel) {
                     Text("Configuración de Rutas", style = MaterialTheme.typography.titleMedium, color = NavyBlue, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    LocationSearchField(
+                    PresetDropdownField(
                         label = "Origen habitual",
                         value = editingOrigin,
                         onValueChange = { editingOrigin = it },
-                        placeholder = "Ej: Casa, Trabajo",
-                        viewModel = viewModel,
+                        options = listOf("Ubicación actual (GPS)", "Casa", "Trabajo"),
                         modifier = Modifier.fillMaxWidth()
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    LocationSearchField(
+                    PresetDropdownField(
                         label = "Facultad de Destino",
                         value = editingDestination,
                         onValueChange = { editingDestination = it },
-                        placeholder = "Ej: Ciencias Económicas",
-                        viewModel = viewModel,
+                        options = listOf(
+                            "Universidad Nacional de Ingeniería (UNI) - RUPAP",
+                            "Universidad Nacional de Ingeniería (UNI) - RUSB",
+                            "Universidad Nacional Autónoma de Nicaragua (UNAN)",
+                            "Universidad Centroamericana (UCA)",
+                            "Universidad Politécnica de Nicaragua (UPOLI)"
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -4075,6 +4808,7 @@ fun ConfigTabScreen(viewModel: UniBuddyViewModel) {
                     viewModel.saveRoute(editingOrigin, editingDestination)
                     viewModel.saveGoogleMapsApiKey(editingGoogleMapsApiKey)
                     editingTravelMinutes.toIntOrNull()?.let { viewModel.saveBaseTravelTime(it) }
+                    editingCurrentWeek.toIntOrNull()?.let { viewModel.updateSemesterStartByWeek(it) }
                     feedbackMsg = "¡Datos de configuración guardados correctamente!"
                 },
                 modifier = Modifier
@@ -4129,6 +4863,23 @@ fun ConfigTabScreen(viewModel: UniBuddyViewModel) {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
+                    if (semesterState != "Vacaciones") {
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.endSemester()
+                                feedbackMsg = "¡Semestre finalizado y guardado en el historial! Disfruta tus vacaciones."
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            border = BorderStroke(1.dp, Terracotta),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Terracotta),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Terminar Semestre (Ir a Vacaciones)", fontWeight = FontWeight.Bold)
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
                     Button(
                         onClick = { showDialog = true },
                         modifier = Modifier.fillMaxWidth(),
@@ -4136,6 +4887,17 @@ fun ConfigTabScreen(viewModel: UniBuddyViewModel) {
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text("Restablecer todos los datos", color = Bone)
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    OutlinedButton(
+                        onClick = onNavigateToPensum,
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.dp, NavyBlue),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Ver mi Progreso (Pensum)", color = NavyBlue)
                     }
                 }
             }

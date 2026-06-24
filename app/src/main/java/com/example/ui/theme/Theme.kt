@@ -7,17 +7,17 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
 private val DarkColorScheme = darkColorScheme(
-    primary = MintGreen,
+    primary = ProBlue,
     onPrimary = NavyBlue,
-    primaryContainer = DarkGreen,
-    onPrimaryContainer = Bone,
-    secondary = SlateGray,
+    primaryContainer = DeepBlue,
+    onPrimaryContainer = White,
+    secondary = DarkGray,
     onSecondary = White,
     background = NavyBlue,
-    onBackground = Bone,
-    surface = DarkGreen,
-    onSurface = Bone,
-    error = Terracotta,
+    onBackground = White,
+    surface = DeepBlue,
+    onSurface = White,
+    error = ProRed,
     onError = White
 )
 
@@ -25,16 +25,16 @@ private val LightColorScheme = lightColorScheme(
     primary = NavyBlue,
     onPrimary = White,
     primaryContainer = Color(0xFFD1E4FF),      // Polished Light Blue
-    onPrimaryContainer = Color(0xFF001D36),    // Midnight Dark Text
-    secondary = SlateGray,
+    onPrimaryContainer = NavyBlue,
+    secondary = DarkGray,
     onSecondary = White,
-    background = BackgroundBone,
+    background = BackgroundGray,
     onBackground = OnSurfaceDark,
-    surface = Bone,                            // White cards
+    surface = White,                            // White cards
     onSurface = OnSurfaceDark,                 // High-contrast charcoal text
     surfaceVariant = Color(0xFFF0F4F8),        // Cool slate active gray
-    onSurfaceVariant = SlateGray,
-    error = Terracotta,
+    onSurfaceVariant = DarkGray,
+    error = ProRed,
     onError = White
 )
 

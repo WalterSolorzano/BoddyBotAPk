@@ -3,17 +3,56 @@ package com.example.data
 import android.content.Context
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
+import org.json.JSONArray
+import org.json.JSONObject
+
+data class ClassSessionDetails(val day: String, val time: String, val room: String)
+
+fun String.parseSessions(): List<ClassSessionDetails> {
+    val list = mutableListOf<ClassSessionDetails>()
+    try {
+        if (this.isBlank() || this == "[]") return list
+        val root = JSONArray(this)
+        for (i in 0 until root.length()) {
+            val obj = root.getJSONObject(i)
+            val timeCode = obj.optString("time", "M1")
+            val readableTime = when (timeCode) {
+                "M1" -> "08:00 - 10:00"
+                "M2" -> "10:00 - 12:00"
+                "M3" -> "12:00 - 14:00"
+                "T1" -> "14:00 - 16:00"
+                "T2" -> "16:00 - 18:00"
+                "T3" -> "18:00 - 20:00"
+                else -> timeCode
+            }
+            list.add(ClassSessionDetails(obj.getString("day"), readableTime, obj.optString("room", "Aula sin definir")))
+        }
+    } catch (e: Exception) { e.printStackTrace() }
+    return list
+}
+
+fun List<ClassSessionDetails>.toJsonString(): String {
+    val arr = JSONArray()
+    this.forEach { s ->
+        val obj = JSONObject()
+        obj.put("day", s.day)
+        obj.put("time", s.time)
+        obj.put("room", s.room)
+        arr.put(obj)
+    }
+    return arr.toString()
+}
 
 // Entities
 @Entity(tableName = "subjects")
 data class Subject(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
-    val schedule: String, // e.g. "Lu, Mi, Vi"
-    val time: String, // e.g. "10:00 AM"
-    val requiredAttendancePercent: Int, // e.g. 75
-    val totalClasses: Int, // e.g. 32
-    val classroom: String // e.g. "Aula 304, Edificio B"
+    val schedule: String, // Keep "Lu, Mi" for quick filtering
+    val sessionsJson: String = "[]", // e.g. [{"day":"Lu","time":"10:00 AM","room":"Aula 1"}]
+    val requiredAttendancePercent: Int,
+    val totalClasses: Int,
+    val colorHex: String = "#FFB3E5FC"
 )
 
 @Entity(
@@ -188,7 +227,7 @@ interface SettingDao {
         KeyValueSetting::class,
         AttendanceLog::class
     ],
-    version = 3,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -203,6 +242,24 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // Example empty migration, actual schema changes would go here
+            }
+        }
+        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            }
+        }
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            }
+        }
+        val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -210,7 +267,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "unibuddy_database"
                 )
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
                 INSTANCE = instance
                 instance

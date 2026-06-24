@@ -3,14 +3,21 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 val NavyBlue = Color(0xFF001D36)       // Midnight Navy Primary
-val DarkGreen = Color(0xFF00497E)      // Deep Executive Blue-Slate
-val MintGreen = Color(0xFF0061A4)      // Mid-tone Professional Blue
-val Amber = Color(0xFFE8DEF8)          // Elegant Soft Purple (from Today box)
-val Terracotta = Color(0xFFBA1A1A)     // Professional Coral-Red error
-val Bone = Color(0xFFFFFFFF)           // Clean White Cards (instead of old Bone cream)
-val SlateGray = Color(0xFF44474E)      // Corporate Secondary Text Gray
-val BackgroundBone = Color(0xFFF7F9FF)  // Main Light Bluish-Gray Canvas
-
+val DeepBlue = Color(0xFF00497E)       // Deep Executive Blue
+val ProBlue = Color(0xFF0061A4)        // Professional Mid-Blue
+val SoftPurple = Color(0xFFE8DEF8)     // Soft Accent Purple
+val ProRed = Color(0xFFBA1A1A)         // Professional Red
+val White = Color(0xFFFFFFFF)          // Pure White
+val DarkGray = Color(0xFF44474E)       // Corporate Secondary Text
+val BackgroundGray = Color(0xFFF7F9FF) // Main Canvas Color
+val DarkGreen = Color(0xFF2E7D32)      // Success Green
+val Amber = Color(0xFFFFB300)          // Actual Amber for warnings
 val OnSurfaceDark = Color(0xFF191C1E)   // Polished Dark Gray text
-val White = Color(0xFFFFFFFF)
+
+// Aliases for compatibility with existing code
+val SlateGray = DarkGray
+val Bone = White
+val BackgroundBone = BackgroundGray
+val MintGreen = ProBlue
+val Terracotta = ProRed
 

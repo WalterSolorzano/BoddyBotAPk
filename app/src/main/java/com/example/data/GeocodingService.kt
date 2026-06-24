@@ -104,11 +104,12 @@ object GeocodingServiceClient {
      */
     suspend fun searchLocation(query: String, googleMapsApiKey: String? = null): List<GeocodingResult> {
         if (query.isBlank()) return emptyList()
+        val queryWithCountry = if (query.contains("Nicaragua", ignoreCase = true)) query else "$query, Nicaragua"
         return try {
             if (!googleMapsApiKey.isNullOrBlank()) {
                 val response = api.searchGoogle(
                     url = "https://maps.googleapis.com/maps/api/geocode/json",
-                    address = query,
+                    address = queryWithCountry,
                     key = googleMapsApiKey
                 )
                 if (response.status == "OK") {
@@ -122,10 +123,10 @@ object GeocodingServiceClient {
                     }
                 } else {
                     // Fallback to Nominatim on non-OK Google response
-                    api.searchNominatim(query = query)
+                    api.searchNominatim(query = queryWithCountry)
                 }
             } else {
-                api.searchNominatim(query = query)
+                api.searchNominatim(query = queryWithCountry)
             }
         } catch (e: Exception) {
             e.printStackTrace()
