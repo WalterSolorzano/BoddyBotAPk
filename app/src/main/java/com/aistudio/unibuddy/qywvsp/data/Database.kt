@@ -108,6 +108,17 @@ data class KeyValueSetting(
     val value: String
 )
 
+@Entity(tableName = "badges")
+data class Badge(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val description: String,
+    val iconEmoji: String,
+    val category: String, // "Attendance", "Grades", "Focus"
+    val isUnlocked: Boolean = false,
+    val dateUnlocked: String = ""
+)
+
 @Entity(
     tableName = "attendance_logs",
     foreignKeys = [
@@ -128,6 +139,21 @@ data class AttendanceLog(
 )
 
 // DAOs
+@Dao
+interface BadgeDao {
+    @Query("SELECT * FROM badges ORDER BY category ASC")
+    fun getAllBadges(): Flow<List<Badge>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBadge(badge: Badge)
+
+    @Update
+    suspend fun updateBadge(badge: Badge)
+
+    @Query("SELECT * FROM badges WHERE name = :name LIMIT 1")
+    suspend fun getBadgeByName(name: String): Badge?
+}
+
 @Dao
 interface AttendanceLogDao {
     @Query("SELECT * FROM attendance_logs ORDER BY id DESC")
@@ -213,6 +239,9 @@ interface SettingDao {
     @Query("SELECT * FROM settings WHERE `key` = :key LIMIT 1")
     suspend fun getSetting(key: String): KeyValueSetting?
 
+    @Query("SELECT * FROM settings")
+    suspend fun getAllSettings(): List<KeyValueSetting>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSetting(setting: KeyValueSetting)
 }
@@ -225,9 +254,10 @@ interface SettingDao {
         Assessment::class,
         TripRecord::class,
         KeyValueSetting::class,
-        AttendanceLog::class
+        AttendanceLog::class,
+        Badge::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -237,6 +267,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun tripRecordDao(): TripRecordDao
     abstract fun settingDao(): SettingDao
     abstract fun attendanceLogDao(): AttendanceLogDao
+    abstract fun badgeDao(): BadgeDao
 
     companion object {
         @Volatile
@@ -259,6 +290,15 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
             }
         }
+        val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            }
+        }
+        val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `badges` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL, `iconEmoji` TEXT NOT NULL, `category` TEXT NOT NULL, `isUnlocked` INTEGER NOT NULL, `dateUnlocked` TEXT NOT NULL)")
+            }
+        }
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -267,7 +307,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "unibuddy_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
@@ -284,6 +324,7 @@ class UniBuddyRepository(private val db: AppDatabase) {
     val tripRecords: Flow<List<TripRecord>> = db.tripRecordDao().getAllTrips()
     val attendanceLogs: Flow<List<AttendanceLog>> = db.attendanceLogDao().getAllLogs()
     val assessments: Flow<List<Assessment>> = db.assessmentDao().getAllAssessments()
+    val badges: Flow<List<Badge>> = db.badgeDao().getAllBadges()
 
     suspend fun getSubjectById(id: Int): Subject? = db.subjectDao().getSubjectById(id)
     suspend fun insertSubject(subject: Subject): Long = db.subjectDao().insertSubject(subject)
@@ -311,5 +352,10 @@ class UniBuddyRepository(private val db: AppDatabase) {
     suspend fun getAverageTripDuration(): Double? = db.tripRecordDao().getAverageDuration()
 
     suspend fun getSetting(key: String): String? = db.settingDao().getSetting(key)?.value
+    suspend fun getAllSettings(): List<KeyValueSetting> = db.settingDao().getAllSettings()
     suspend fun saveSetting(key: String, value: String) = db.settingDao().insertSetting(KeyValueSetting(key, value))
+
+    suspend fun getBadgeByName(name: String): Badge? = db.badgeDao().getBadgeByName(name)
+    suspend fun insertBadge(badge: Badge) = db.badgeDao().insertBadge(badge)
+    suspend fun updateBadge(badge: Badge) = db.badgeDao().updateBadge(badge)
 }

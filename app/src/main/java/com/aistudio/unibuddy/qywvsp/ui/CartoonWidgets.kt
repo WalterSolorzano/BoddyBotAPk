@@ -11,11 +11,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -33,6 +36,9 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import com.aistudio.unibuddy.qywvsp.ui.theme.*
+import com.aistudio.unibuddy.qywvsp.data.Subject
+import com.aistudio.unibuddy.qywvsp.data.ClassSessionDetails
+import com.aistudio.unibuddy.qywvsp.data.parseSessions
 
 @Composable
 fun RainOverlay() {
@@ -189,3 +195,213 @@ fun DashboardCartoonWidgets(widgets: List<CartoonWidgetData>, isRaining: Boolean
         }
     }
 }
+
+@Composable
+fun CartoonScheduleWidget(
+    subjects: List<com.aistudio.unibuddy.qywvsp.data.Subject>,
+    modifier: Modifier = Modifier
+) {
+    val calendar = java.util.Calendar.getInstance()
+    val todayCode = when (calendar.get(java.util.Calendar.DAY_OF_WEEK)) {
+        java.util.Calendar.MONDAY -> "Lu"
+        java.util.Calendar.TUESDAY -> "Ma"
+        java.util.Calendar.WEDNESDAY -> "Mi"
+        java.util.Calendar.THURSDAY -> "Ju"
+        java.util.Calendar.FRIDAY -> "Vi"
+        java.util.Calendar.SATURDAY -> "Sá"
+        else -> "Lu"
+    }
+
+    val todayClasses = remember(subjects) {
+        val list = mutableListOf<Pair<com.aistudio.unibuddy.qywvsp.data.Subject, com.aistudio.unibuddy.qywvsp.data.ClassSessionDetails>>()
+        subjects.forEach { sub ->
+            sub.sessionsJson.parseSessions().forEach { session ->
+                if (session.day.equals(todayCode, ignoreCase = true)) {
+                    list.add(Pair(sub, session))
+                }
+            }
+        }
+        list.sortedBy { it.second.time }
+    }
+
+    // Interactive bounce/rotation animation for cartoon comic feel
+    val infiniteTransition = rememberInfiniteTransition(label = "cartoon_bounce")
+    val rotationAngle by infiniteTransition.animateFloat(
+        initialValue = -2f,
+        targetValue = 2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "rotation"
+    )
+
+    val scaleFactor by infiniteTransition.animateFloat(
+        initialValue = 0.98f,
+        targetValue = 1.02f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scale"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                rotationZ = rotationAngle
+                scaleX = scaleFactor
+                scaleY = scaleFactor
+            }
+            .shadow(12.dp, RoundedCornerShape(28.dp), ambientColor = NavyBlue, spotColor = NavyBlue)
+            .background(Color(0xFFFFFDE7), RoundedCornerShape(28.dp)) // Vibrant comic yellow paper
+            .border(4.dp, NavyBlue, RoundedCornerShape(28.dp))
+            .padding(18.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(Terracotta, CircleShape)
+                            .border(2.dp, NavyBlue, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "HORARIO DE HOY",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NavyBlue,
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                Surface(
+                    color = MintGreen,
+                    border = BorderStroke(2.dp, NavyBlue),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = when(todayCode) {
+                            "Lu" -> "LUNES"
+                            "Ma" -> "MARTES"
+                            "Mi" -> "MIÉRCOLES"
+                            "Ju" -> "JUEVES"
+                            "Vi" -> "VIERNES"
+                            "Sá" -> "SÁBADO"
+                            else -> "DOMINGO"
+                        },
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NavyBlue,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            if (todayClasses.isEmpty()) {
+                // Free day state
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .border(2.dp, NavyBlue, RoundedCornerShape(16.dp))
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "¡DÍA LIBRE!",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ProBlue
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "No tienes materias registradas hoy.",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SlateGray
+                        )
+                    }
+                }
+            } else {
+                // Today's classes
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    todayClasses.forEach { pair ->
+                        val sub = pair.first
+                        val session = pair.second
+                        val (bgColor, accentColor) = getSubjectColorPalette(sub.colorHex)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(4.dp, RoundedCornerShape(16.dp))
+                                .background(bgColor, RoundedCornerShape(16.dp))
+                                .border(3.dp, NavyBlue, RoundedCornerShape(16.dp))
+                                .padding(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = sub.name,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = NavyBlue,
+                                        maxLines = 1
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "Aula: ${session.room}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = SlateGray
+                                        )
+                                    }
+                                }
+
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Surface(
+                                        color = Color.White,
+                                        border = BorderStroke(2.dp, NavyBlue),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = session.time,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = ProBlue,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

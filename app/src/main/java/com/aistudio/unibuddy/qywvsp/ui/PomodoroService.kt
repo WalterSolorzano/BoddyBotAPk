@@ -1,3 +1,4 @@
+// UniBuddy Pomodoro Service - Version 1.5 - Fix for GitHub Build
 package com.aistudio.unibuddy.qywvsp.ui
 
 import android.app.Notification

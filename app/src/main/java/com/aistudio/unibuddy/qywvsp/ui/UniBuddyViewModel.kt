@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.aistudio.unibuddy.qywvsp.data.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -28,19 +30,46 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 repository.getSetting("destination")?.let { _destination.value = it }
                 try { repository.getSetting("base_travel_time")?.let { _baseTravelTime.value = it.toInt() } } catch(e: Exception) {}
                 repository.getSetting("username")?.let { _username.value = it }
+                repository.getSetting("home_address")?.let { _homeAddress.value = it }
+                repository.getSetting("work_address")?.let { _workAddress.value = it }
+                repository.getSetting("user_university")?.let { _userUniversity.value = it }
+                repository.getSetting("buddy_accessory")?.let { _buddyAccessory.value = it }
+                repository.getSetting("buddy_color")?.let { _buddyColor.value = it }
                 repository.getSetting("google_maps_api_key")?.let { _googleMapsApiKey.value = it }
                 try { repository.getSetting("onboarding_completed")?.let { _isOnboardingCompleted.value = it.toBoolean() } } catch(e: Exception) {}
+                try { repository.getSetting("dark_mode")?.let { _isDarkMode.value = it.toBoolean() } } catch(e: Exception) {}
                 repository.getSetting("arrival_margin_preference")?.let { _arrivalMarginPreference.value = it }
                 repository.getSetting("weather_desc")?.let { _weatherDescription.value = it }
                 try { repository.getSetting("is_raining")?.let { _isRaining.value = it.toBoolean() } } catch(e: Exception) {}
                 try { repository.getSetting("semester_start_date")?.let { _semesterStartDate.value = it.toLong() } } catch(e: Exception) {}
                 repository.getSetting("passed_subjects")?.let { _passedSubjects.value = it.split(",").filter { s -> s.isNotEmpty() }.toSet() }
+                repository.getSetting("focus_objectives")?.let { _focusObjectivesJson.value = it }
+                repository.getSetting("focus_sessions_history")?.let { _focusSessionsHistoryJson.value = it }
+                repository.getSetting("career")?.let { _career.value = it }
+                repository.getSetting("buddy_pose")?.let { _buddyPose.value = it }
+                
+                try {
+                    val allSettings = repository.getAllSettings()
+                    val importanceMap = mutableMapOf<Int, String>()
+                    allSettings.forEach { setting ->
+                        if (setting.key.startsWith("subject_importance_")) {
+                            val subId = setting.key.replace("subject_importance_", "").toIntOrNull()
+                            if (subId != null) {
+                                importanceMap[subId] = setting.value
+                            }
+                        }
+                    }
+                    _subjectImportanceMap.value = importanceMap
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
                 
                 // Populate with defaults if empty
                 if (repository.getSetting("onboarding_completed") == null) {
                     prepopulateDatabase()
                 }
                 
+                checkAndInitializeBadges()
                 refreshWeather()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -50,12 +79,63 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private suspend fun checkAndInitializeBadges() {
+        val existing = repository.badges.first()
+        if (existing.isEmpty()) {
+            val initialBadges = listOf(
+                Badge(name = "Primeros Pasos", description = "Completa el onboarding de la app.", iconEmoji = " ", category = "General", isUnlocked = _isOnboardingCompleted.value),
+                Badge(name = "Estudiante Responsable", description = "Registra 5 días de asistencia perfecta.", iconEmoji = " ", category = "Attendance"),
+                Badge(name = "En el Top", description = "Alcanza un promedio mayor a 90 en una materia.", iconEmoji = " ", category = "Grades"),
+                Badge(name = "Concentración Total", description = "Usa el modo focus por más de 1 hora.", iconEmoji = " ", category = "Focus")
+            )
+            for (badge in initialBadges) {
+                repository.insertBadge(badge)
+            }
+        }
+    }
+
+    fun unlockBadge(name: String) {
+        viewModelScope.launch {
+            val badgeFlow = repository.badges.first()
+            val badge = badgeFlow.find { it.name == name }
+            if (badge != null && !badge.isUnlocked) {
+                val updated = badge.copy(isUnlocked = true, dateUnlocked = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()))
+                repository.updateBadge(updated)
+                _snackbarEvent.emit("¡Insignia desbloqueada: ${badge.name}!")
+            }
+        }
+    }
+
+    fun saveHomeWorkAddresses(home: String, work: String) {
+        viewModelScope.launch {
+            _homeAddress.value = home
+            _workAddress.value = work
+            repository.saveSetting("home_address", home)
+            repository.saveSetting("work_address", work)
+        }
+    }
+
+    fun saveBuddyCustomization(accessory: String, color: String) {
+        viewModelScope.launch {
+            _buddyAccessory.value = accessory
+            _buddyColor.value = color
+            repository.saveSetting("buddy_accessory", accessory)
+            repository.saveSetting("buddy_color", color)
+        }
+    }
+
+    data class University(val name: String, val lat: Double, val lon: Double)
+
     private suspend fun prepopulateDatabase() {
         repository.saveSetting("onboarding_completed", "false")
         repository.saveSetting("username", "Estudiante")
         repository.saveSetting("origin", "Casa")
         repository.saveSetting("destination", "Facultad")
         repository.saveSetting("semester_state", "Vacaciones")
+        repository.saveSetting("home_address", "Definir en perfil")
+        repository.saveSetting("work_address", "Definir en perfil")
+        repository.saveSetting("buddy_accessory", "none")
+        repository.saveSetting("buddy_color", "#4CAF50")
     }
 
     // Dynamic UI State
@@ -189,11 +269,146 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     private val _username = MutableStateFlow("Estudiante")
     val username: StateFlow<String> = _username.asStateFlow()
 
+    private val _homeAddress = MutableStateFlow("")
+    val homeAddress: StateFlow<String> = _homeAddress.asStateFlow()
+
+    private val _workAddress = MutableStateFlow("")
+    val workAddress: StateFlow<String> = _workAddress.asStateFlow()
+
+    private val _userUniversity = MutableStateFlow("")
+    val userUniversity: StateFlow<String> = _userUniversity.asStateFlow()
+
+    private val _buddyAccessory = MutableStateFlow("none") // "none", "hat", "glasses", "scarf"
+    val buddyAccessory: StateFlow<String> = _buddyAccessory.asStateFlow()
+
+    private val _buddyColor = MutableStateFlow("#4CAF50") // Default Green
+    val buddyColor: StateFlow<String> = _buddyColor.asStateFlow()
+
+    private val _career = MutableStateFlow("Ingeniería Industrial")
+    val career: StateFlow<String> = _career.asStateFlow()
+
+    private val _buddyPose = MutableStateFlow("idle")
+    val buddyPose: StateFlow<String> = _buddyPose.asStateFlow()
+
+    private val _subjectImportanceMap = MutableStateFlow<Map<Int, String>>(emptyMap())
+    val subjectImportanceMap: StateFlow<Map<Int, String>> = _subjectImportanceMap.asStateFlow()
+
+    private val _focusObjectivesJson = MutableStateFlow("")
+    val focusObjectivesJson: StateFlow<String> = _focusObjectivesJson.asStateFlow()
+
+    private val _focusSessionsHistoryJson = MutableStateFlow("")
+    val focusSessionsHistoryJson: StateFlow<String> = _focusSessionsHistoryJson.asStateFlow()
+
+    fun saveFocusObjectives(json: String) {
+        viewModelScope.launch {
+            _focusObjectivesJson.value = json
+            repository.saveSetting("focus_objectives", json)
+        }
+    }
+
+    fun saveFocusSessionsHistory(json: String) {
+        viewModelScope.launch {
+            _focusSessionsHistoryJson.value = json
+            repository.saveSetting("focus_sessions_history", json)
+            
+            // Check for badge unlock if focus sessions total exceeds 60 mins
+            try {
+                val array = org.json.JSONArray(json)
+                var totalMins = 0
+                for (i in 0 until array.length()) {
+                    totalMins += array.getJSONObject(i).optInt("duration", 0)
+                }
+                if (totalMins >= 60) {
+                    unlockBadge("Concentración Total")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    val badges: StateFlow<List<Badge>> = repository.badges
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    data class Campus(val name: String, val lat: Double, val lng: Double)
+    data class UniversityData(val name: String, val shortName: String, val logoEmoji: String, val campuses: List<Campus>)
+
+    val universities = listOf(
+        UniversityData(
+            name = "Universidad Nacional de Ingeniería",
+            shortName = "UNI",
+            logoEmoji = "🏗️",
+            campuses = listOf(
+                Campus("RUPAP", 12.1475, -86.2208),
+                Campus("RUSB", 12.1264, -86.2711)
+            )
+        ),
+        UniversityData(
+            name = "UNAN-Managua",
+            shortName = "UNAN",
+            logoEmoji = "📚",
+            campuses = listOf(
+                Campus("Recinto Rubén Darío", 12.1192, -86.2644)
+            )
+        ),
+        UniversityData(
+            name = "Universidad Casimiro Sotelo",
+            shortName = "UCS",
+            logoEmoji = "🏛️",
+            campuses = listOf(
+                Campus("Sede Central", 12.1258, -86.2708)
+            )
+        ),
+        UniversityData(
+            name = "Universidad Politécnica de Nicaragua",
+            shortName = "UPOLI",
+            logoEmoji = "💻",
+            campuses = listOf(
+                Campus("Sede Central", 12.1419, -86.2253)
+            )
+        ),
+        UniversityData(
+            name = "Universidad Americana",
+            shortName = "UAM",
+            logoEmoji = "🦅",
+            campuses = listOf(
+                Campus("Campus Principal", 12.1156, -86.2369)
+            )
+        )
+    )
+
+    private val _isLocationAvailable = MutableStateFlow(false)
+    val isLocationAvailable: StateFlow<Boolean> = _isLocationAvailable.asStateFlow()
+
+    private val _currentLocationName = MutableStateFlow("Buscando...")
+    val currentLocationName: StateFlow<String> = _currentLocationName.asStateFlow()
+
+    fun updateLocationStatus(available: Boolean, name: String = "") {
+        _isLocationAvailable.value = available
+        if (name.isNotEmpty()) _currentLocationName.value = name
+    }
+
+    fun getSelectedUniversityCoords(): Pair<Double, Double>? {
+        val uni = universities.find { it.name == _destination.value }
+        val campus = uni?.campuses?.firstOrNull()
+        return if (campus != null) Pair(campus.lat, campus.lng) else null
+    }
+
     private val _googleMapsApiKey = MutableStateFlow("")
     val googleMapsApiKey: StateFlow<String> = _googleMapsApiKey.asStateFlow()
 
     private val _isOnboardingCompleted = MutableStateFlow(false)
     val isOnboardingCompleted: StateFlow<Boolean> = _isOnboardingCompleted.asStateFlow()
+
+    private val _isDarkMode = MutableStateFlow(false)
+    val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
+
+    fun setDarkMode(enabled: Boolean) {
+        viewModelScope.launch {
+            _isDarkMode.value = enabled
+            repository.saveSetting("dark_mode", enabled.toString())
+        }
+    }
 
     // Methods
     fun updateOnboardingStatus(completed: Boolean) {
@@ -257,6 +472,29 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _username.value = name
             repository.saveSetting("username", name)
+        }
+    }
+
+    fun saveCareer(careerName: String) {
+        viewModelScope.launch {
+            _career.value = careerName
+            repository.saveSetting("career", careerName)
+        }
+    }
+
+    fun saveBuddyPose(poseName: String) {
+        viewModelScope.launch {
+            _buddyPose.value = poseName
+            repository.saveSetting("buddy_pose", poseName)
+        }
+    }
+
+    fun saveSubjectImportance(subjectId: Int, importanceValue: String) {
+        viewModelScope.launch {
+            val currentMap = _subjectImportanceMap.value.toMutableMap()
+            currentMap[subjectId] = importanceValue
+            _subjectImportanceMap.value = currentMap
+            repository.saveSetting("subject_importance_$subjectId", importanceValue)
         }
     }
 
@@ -577,6 +815,184 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             _isOnboardingCompleted.value = false
             repository.saveSetting("onboarding_completed", "false")
             prepopulateDatabase()
+        }
+    }
+
+    fun exportBackup(): String {
+        val root = JSONObject()
+        try {
+            root.put("version", 1)
+            
+            val settingsObj = JSONObject()
+            settingsObj.put("username", _username.value)
+            settingsObj.put("origin", _origin.value)
+            settingsObj.put("destination", _destination.value)
+            settingsObj.put("home_address", _homeAddress.value)
+            settingsObj.put("work_address", _workAddress.value)
+            settingsObj.put("buddy_accessory", _buddyAccessory.value)
+            settingsObj.put("buddy_color", _buddyColor.value)
+            settingsObj.put("base_travel_time", _baseTravelTime.value)
+            settingsObj.put("arrival_margin_preference", _arrivalMarginPreference.value)
+            root.put("settings", settingsObj)
+
+            val subjectsArr = JSONArray()
+            val currentSubjects = subjects.value
+            val currentAssessments = assessments.value
+            val currentAbsences = absences.value
+            val currentLogs = attendanceLogs.value
+
+            for (sub in currentSubjects) {
+                val subObj = JSONObject()
+                subObj.put("name", sub.name)
+                subObj.put("schedule", sub.schedule)
+                subObj.put("sessionsJson", sub.sessionsJson)
+                subObj.put("requiredAttendancePercent", sub.requiredAttendancePercent)
+                subObj.put("totalClasses", sub.totalClasses)
+                subObj.put("colorHex", sub.colorHex)
+
+                // Assessments
+                val assArr = JSONArray()
+                val subAss = currentAssessments.filter { it.subjectId == sub.id }
+                for (ass in subAss) {
+                    val assObj = JSONObject()
+                    assObj.put("name", ass.name)
+                    if (ass.grade != null) assObj.put("grade", ass.grade) else assObj.put("grade", JSONObject.NULL)
+                    assObj.put("percentage", ass.percentage)
+                    assObj.put("examDate", ass.examDate)
+                    assArr.put(assObj)
+                }
+                subObj.put("assessments", assArr)
+
+                // Absences
+                val absArr = JSONArray()
+                val subAbs = currentAbsences.filter { it.subjectId == sub.id }
+                for (abs in subAbs) {
+                    val absObj = JSONObject()
+                    absObj.put("date", abs.date)
+                    absArr.put(absObj)
+                }
+                subObj.put("absences", absArr)
+
+                // Logs
+                val logArr = JSONArray()
+                val subLogs = currentLogs.filter { it.subjectId == sub.id }
+                for (log in subLogs) {
+                    val logObj = JSONObject()
+                    logObj.put("date", log.date)
+                    logObj.put("isPresent", log.isPresent)
+                    logArr.put(logObj)
+                }
+                subObj.put("logs", logArr)
+
+                subjectsArr.put(subObj)
+            }
+            root.put("subjects", subjectsArr)
+            
+            return root.toString(2)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return ""
+        }
+    }
+
+    fun importBackup(jsonStr: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val root = JSONObject(jsonStr)
+                
+                // 1. Restore settings
+                if (root.has("settings")) {
+                    val s = root.getJSONObject("settings")
+                    saveUsername(s.optString("username", "Estudiante"))
+                    saveRoute(s.optString("origin", "Casa"), s.optString("destination", "Facultad"))
+                    saveHomeWorkAddresses(s.optString("home_address", ""), s.optString("work_address", ""))
+                    saveBuddyCustomization(s.optString("buddy_accessory", "none"), s.optString("buddy_color", "#4CAF50"))
+                    saveBaseTravelTime(s.optInt("base_travel_time", 25))
+                    setArrivalMarginPreference(s.optString("arrival_margin_preference", "normal"))
+                }
+
+                // 2. Clear academic database tables first
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val db = AppDatabase.getDatabase(getApplication())
+                    db.subjectDao().getAllSubjects().first().forEach {
+                        db.subjectDao().deleteSubject(it)
+                    }
+                }
+
+                // 3. Import subjects, assessments, absences, logs
+                if (root.has("subjects")) {
+                    val subArr = root.getJSONArray("subjects")
+                    for (i in 0 until subArr.length()) {
+                        val subObj = subArr.getJSONObject(i)
+                        val sub = Subject(
+                            name = subObj.getString("name"),
+                            schedule = subObj.getString("schedule"),
+                            sessionsJson = subObj.optString("sessionsJson", "[]"),
+                            requiredAttendancePercent = subObj.getInt("requiredAttendancePercent"),
+                            totalClasses = subObj.getInt("totalClasses"),
+                            colorHex = subObj.optString("colorHex", "#FFB3E5FC")
+                        )
+                        val newSubId = repository.insertSubject(sub).toInt()
+
+                        // Import Assessments
+                        if (subObj.has("assessments")) {
+                            val assArr = subObj.getJSONArray("assessments")
+                            for (j in 0 until assArr.length()) {
+                                val assObj = assArr.getJSONObject(j)
+                                val gradeVal = if (assObj.isNull("grade")) null else assObj.getDouble("grade")
+                                repository.insertAssessment(
+                                    Assessment(
+                                        subjectId = newSubId,
+                                        name = assObj.getString("name"),
+                                        grade = gradeVal,
+                                        percentage = assObj.getDouble("percentage"),
+                                        examDate = assObj.optString("examDate", "")
+                                    )
+                                )
+                            }
+                        }
+
+                        // Import Absences
+                        if (subObj.has("absences")) {
+                            val absArr = subObj.getJSONArray("absences")
+                            for (j in 0 until absArr.length()) {
+                                val absObj = absArr.getJSONObject(j)
+                                repository.insertAbsence(
+                                    Absence(
+                                        subjectId = newSubId,
+                                        date = absObj.getString("date")
+                                    )
+                                )
+                            }
+                        }
+
+                        // Import Logs
+                        if (subObj.has("logs")) {
+                            val logArr = subObj.getJSONArray("logs")
+                            for (j in 0 until logArr.length()) {
+                                val logObj = logArr.getJSONObject(j)
+                                repository.insertAttendanceLog(
+                                    AttendanceLog(
+                                        subjectId = newSubId,
+                                        date = logObj.getString("date"),
+                                        isPresent = logObj.getBoolean("isPresent")
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Ensure onboarding is marked completed after restoring
+                _isOnboardingCompleted.value = true
+                repository.saveSetting("onboarding_completed", "true")
+
+                _snackbarEvent.emit("Respaldo restaurado con éxito")
+                onSuccess()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onError(e.message ?: "Error desconocido")
+            }
         }
     }
 }
