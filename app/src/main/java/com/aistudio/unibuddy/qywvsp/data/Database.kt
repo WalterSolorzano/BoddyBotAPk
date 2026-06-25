@@ -3,9 +3,14 @@ package com.aistudio.unibuddy.qywvsp.data
 import android.content.Context
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import org.json.JSONArray
 import org.json.JSONObject
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import com.squareup.moshi.JsonClass
 
+@JsonClass(generateAdapter = true)
 data class ClassSessionDetails(val day: String, val time: String, val room: String)
 
 fun String.parseSessions(): List<ClassSessionDetails> {
@@ -49,7 +54,7 @@ data class Subject(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
     val schedule: String, // Keep "Lu, Mi" for quick filtering
-    val sessionsJson: String = "[]", // e.g. [{"day":"Lu","time":"10:00 AM","room":"Aula 1"}]
+    val sessions: List<ClassSessionDetails> = emptyList(),
     val requiredAttendancePercent: Int,
     val totalClasses: Int,
     val colorHex: String = "#FFB3E5FC"
@@ -94,6 +99,60 @@ data class Assessment(
     val examDate: String = "" // e.g. "Lu", "Ma", "Mi", "Ju", "Vi", "Sá"
 )
 
+enum class AssessmentStatus {
+    NF_R, // Regular
+    IC_R, // Recuperación 1
+    IIC_R, // Recuperación 2
+    NF_CV, // Curso de Verano
+    UNKNOWN
+}
+
+@Entity(tableName = "careers")
+data class Career(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val universityName: String,
+    val campusName: String,
+    val careerName: String,
+    val totalCredits: Int = 0
+)
+
+@Entity(
+    tableName = "pensum_subjects",
+    foreignKeys = [ForeignKey(entity = Career::class, parentColumns = ["id"], childColumns = ["careerId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("careerId")]
+)
+data class PensumSubject(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val careerId: Int,
+    val code: String,
+    val name: String,
+    val semester: String,
+    val credits: Double,
+    val isNumbers: Boolean = false
+)
+
+@Entity(
+    tableName = "academic_records",
+    foreignKeys = [ForeignKey(entity = PensumSubject::class, parentColumns = ["id"], childColumns = ["pensumSubjectId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("pensumSubjectId")]
+)
+data class AcademicRecord(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val pensumSubjectId: Int,
+    val grade: Double,
+    val status: AssessmentStatus,
+    val year: String,
+    val academicGroup: String
+)
+
+data class AcademicRecordWithSubject(
+    @Embedded val record: AcademicRecord,
+    @ColumnInfo(name = "name") val subjectName: String,
+    @ColumnInfo(name = "semester") val semester: String,
+    @ColumnInfo(name = "credits") val credits: Double,
+    @ColumnInfo(name = "isNumbers") val isNumbers: Boolean
+)
+
 @Entity(tableName = "trip_records")
 data class TripRecord(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -113,7 +172,7 @@ data class Badge(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
     val description: String,
-    val iconEmoji: String,
+    val iconId: String,
     val category: String, // "Attendance", "Grades", "Focus"
     val isUnlocked: Boolean = false,
     val dateUnlocked: String = ""
@@ -168,6 +227,40 @@ interface AttendanceLogDao {
     @Query("DELETE FROM attendance_logs WHERE id = :id")
     suspend fun deleteLogById(id: Int)
 }
+@Dao
+interface CareerDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCareer(career: Career): Long
+
+    @Query("SELECT * FROM careers")
+    fun getAllCareers(): Flow<List<Career>>
+}
+
+@Dao
+interface PensumSubjectDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPensumSubject(subject: PensumSubject): Long
+    
+    @Query("SELECT * FROM pensum_subjects WHERE careerId = :careerId")
+    fun getSubjectsForCareer(careerId: Int): Flow<List<PensumSubject>>
+}
+
+@Dao
+interface AcademicRecordDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAcademicRecord(record: AcademicRecord): Long
+
+    @Query("SELECT * FROM academic_records")
+    fun getAllRecords(): Flow<List<AcademicRecord>>
+
+    @Query("""
+        SELECT ar.*, ps.name as name, ps.semester as semester, ps.credits as credits, ps.isNumbers as isNumbers 
+        FROM academic_records ar 
+        INNER JOIN pensum_subjects ps ON ar.pensumSubjectId = ps.id
+    """)
+    fun getFullAcademicHistory(): Flow<List<AcademicRecordWithSubject>>
+}
+
 @Dao
 interface SubjectDao {
     @Query("SELECT * FROM subjects ORDER BY name ASC")
@@ -246,6 +339,32 @@ interface SettingDao {
     suspend fun insertSetting(setting: KeyValueSetting)
 }
 
+class Converters {
+    private val moshi = Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+    private val type = Types.newParameterizedType(List::class.java, ClassSessionDetails::class.java)
+    private val adapter = moshi.adapter<List<ClassSessionDetails>>(type)
+
+    @TypeConverter
+    fun fromString(value: String): List<ClassSessionDetails> {
+        return adapter.fromJson(value) ?: emptyList()
+    }
+
+    @TypeConverter
+    fun fromList(list: List<ClassSessionDetails>): String {
+        return adapter.toJson(list)
+    }
+
+    @TypeConverter
+    fun fromAssessmentStatus(status: AssessmentStatus): String = status.name
+
+    @TypeConverter
+    fun toAssessmentStatus(status: String): AssessmentStatus = try {
+        AssessmentStatus.valueOf(status)
+    } catch (e: Exception) {
+        AssessmentStatus.UNKNOWN
+    }
+}
+
 // Room Database
 @Database(
     entities = [
@@ -255,12 +374,19 @@ interface SettingDao {
         TripRecord::class,
         KeyValueSetting::class,
         AttendanceLog::class,
-        Badge::class
+        Badge::class,
+        Career::class,
+        PensumSubject::class,
+        AcademicRecord::class
     ],
-    version = 7,
-    exportSchema = false
+    version = 11,
+    exportSchema = true
 )
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun careerDao(): CareerDao
+    abstract fun pensumSubjectDao(): PensumSubjectDao
+    abstract fun academicRecordDao(): AcademicRecordDao
     abstract fun subjectDao(): SubjectDao
     abstract fun absenceDao(): AbsenceDao
     abstract fun assessmentDao(): AssessmentDao
@@ -272,6 +398,45 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
+
+        val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `careers` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `universityName` TEXT NOT NULL,
+                        `campusName` TEXT NOT NULL,
+                        `careerName` TEXT NOT NULL,
+                        `totalCredits` INTEGER NOT NULL
+                    )
+                """)
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `pensum_subjects` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `careerId` INTEGER NOT NULL,
+                        `code` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `semester` TEXT NOT NULL,
+                        `credits` REAL NOT NULL,
+                        `isNumbers` INTEGER NOT NULL,
+                        FOREIGN KEY(`careerId`) REFERENCES `careers`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_pensum_subjects_careerId` ON `pensum_subjects` (`careerId`)")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `academic_records` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `pensumSubjectId` INTEGER NOT NULL,
+                        `grade` REAL NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `year` TEXT NOT NULL,
+                        `academicGroup` TEXT NOT NULL,
+                        FOREIGN KEY(`pensumSubjectId`) REFERENCES `pensum_subjects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_academic_records_pensumSubjectId` ON `academic_records` (`pensumSubjectId`)")
+            }
+        }
 
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -299,6 +464,18 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS `badges` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL, `iconEmoji` TEXT NOT NULL, `category` TEXT NOT NULL, `isUnlocked` INTEGER NOT NULL, `dateUnlocked` TEXT NOT NULL)")
             }
         }
+        val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            }
+        }
+        val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `badges_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL, `iconId` TEXT NOT NULL, `category` TEXT NOT NULL, `isUnlocked` INTEGER NOT NULL, `dateUnlocked` TEXT NOT NULL)")
+                db.execSQL("INSERT INTO `badges_new` (`id`, `name`, `description`, `iconId`, `category`, `isUnlocked`, `dateUnlocked`) SELECT `id`, `name`, `description`, 'ic_badge_default', `category`, `isUnlocked`, `dateUnlocked` FROM `badges`")
+                db.execSQL("DROP TABLE `badges`")
+                db.execSQL("ALTER TABLE `badges_new` RENAME TO `badges`")
+            }
+        }
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -307,7 +484,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "unibuddy_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
@@ -358,4 +535,17 @@ class UniBuddyRepository(private val db: AppDatabase) {
     suspend fun getBadgeByName(name: String): Badge? = db.badgeDao().getBadgeByName(name)
     suspend fun insertBadge(badge: Badge) = db.badgeDao().insertBadge(badge)
     suspend fun updateBadge(badge: Badge) = db.badgeDao().updateBadge(badge)
+
+    suspend fun getOrCreateCareer(universityName: String, campusName: String, careerName: String): Int {
+        val existing = db.careerDao().getAllCareers().firstOrNull()?.find {
+            it.universityName == universityName && it.campusName == campusName && it.careerName == careerName
+        }
+        if (existing != null) return existing.id
+        return db.careerDao().insertCareer(Career(universityName = universityName, campusName = campusName, careerName = careerName)).toInt()
+    }
+
+    suspend fun insertPensumSubject(subject: PensumSubject): Long = db.pensumSubjectDao().insertPensumSubject(subject)
+    suspend fun insertAcademicRecord(record: AcademicRecord): Long = db.academicRecordDao().insertAcademicRecord(record)
+    
+    val fullAcademicHistory = db.academicRecordDao().getFullAcademicHistory()
 }

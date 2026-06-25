@@ -32,11 +32,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.aistudio.unibuddy.qywvsp.R
 import com.aistudio.unibuddy.qywvsp.data.Subject
 import com.aistudio.unibuddy.qywvsp.ui.theme.*
 import java.util.Locale
+import com.google.maps.android.compose.*
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.MapStyleOptions
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import android.Manifest
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun GPSConfirmationDialog(
     subject: Subject,
@@ -205,6 +213,20 @@ fun GPSConfirmationDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Permissions
+                val locationPermissionsState = rememberMultiplePermissionsState(
+                    listOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+
+                LaunchedEffect(Unit) {
+                    if (!locationPermissionsState.allPermissionsGranted) {
+                        locationPermissionsState.launchMultiplePermissionRequest()
+                    }
+                }
+
                 // Beautiful Stylized Map Canvas Component
                 Box(
                     modifier = Modifier
@@ -215,121 +237,45 @@ fun GPSConfirmationDialog(
                         .border(1.dp, ProBlue.copy(alpha = 0.15f), RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Mapping sector positions slightly differently to make the map interactive!
                     val sectorOffsetMap = mapOf(
-                        "Entrada Principal" to Offset(120f, 260f),
-                        "Pabellón A (Aulas)" to Offset(240f, 150f),
-                        "Pabellón B (Sistemas)" to Offset(400f, 180f),
-                        "Biblioteca Central" to Offset(180f, 120f),
-                        "Laboratorios de Cómputo" to Offset(350f, 240f),
-                        "Cafetería" to Offset(300f, 100f),
-                        "Auditorio" to Offset(160f, 200f)
+                        "Entrada Principal" to LatLng(coords.first + 0.0005, coords.second),
+                        "Pabellón A (Aulas)" to LatLng(coords.first, coords.second + 0.0005),
+                        "Pabellón B (Sistemas)" to LatLng(coords.first - 0.0005, coords.second),
+                        "Biblioteca Central" to LatLng(coords.first, coords.second - 0.0005),
+                        "Laboratorios de Cómputo" to LatLng(coords.first + 0.0002, coords.second + 0.0002),
+                        "Cafetería" to LatLng(coords.first - 0.0002, coords.second - 0.0002),
+                        "Auditorio" to LatLng(coords.first + 0.0003, coords.second - 0.0003)
                     )
                     
-                    val activeOffset = sectorOffsetMap[selectedSector] ?: Offset(200f, 200f)
+                    val activeLocation = sectorOffsetMap[selectedSector] ?: LatLng(coords.first, coords.second)
+                    val cameraPositionState = rememberCameraPositionState {
+                        position = CameraPosition.fromLatLngZoom(activeLocation, 17f)
+                    }
 
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val canvasWidth = size.width
-                        val canvasHeight = size.height
+                    LaunchedEffect(activeLocation) {
+                        cameraPositionState.animate(
+                            update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(activeLocation, 17f)
+                        )
+                    }
 
-                        // Draw Grid lines to represent streets or blocks
-                        val pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                        
-                        // Vertical streets
-                        drawLine(
-                            color = Color.White,
-                            start = Offset(100f, 0f),
-                            end = Offset(100f, canvasHeight),
-                            strokeWidth = 12.dp.toPx()
+                    val context = LocalContext.current
+                    GoogleMap(
+                        modifier = Modifier.fillMaxSize(),
+                        cameraPositionState = cameraPositionState,
+                        properties = MapProperties(
+                            isMyLocationEnabled = locationPermissionsState.allPermissionsGranted,
+                            mapStyleOptions = MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style)
+                        ),
+                        uiSettings = MapUiSettings(
+                            compassEnabled = false,
+                            myLocationButtonEnabled = true,
+                            mapToolbarEnabled = false
                         )
-                        drawLine(
-                            color = Color.White,
-                            start = Offset(canvasWidth - 120f, 0f),
-                            end = Offset(canvasWidth - 120f, canvasHeight),
-                            strokeWidth = 14.dp.toPx()
-                        )
-                        
-                        // Horizontal streets
-                        drawLine(
-                            color = Color.White,
-                            start = Offset(0f, 130f),
-                            end = Offset(canvasWidth, 130f),
-                            strokeWidth = 12.dp.toPx()
-                        )
-                        drawLine(
-                            color = Color.White,
-                            start = Offset(0f, canvasHeight - 80f),
-                            end = Offset(canvasWidth, canvasHeight - 80f),
-                            strokeWidth = 10.dp.toPx()
-                        )
-
-                        // Draw Campus Blocks/Buildings
-                        drawRoundRect(
-                            color = Color(0xFFC8E6C9), // Green gardens
-                            topLeft = Offset(130f, 10f),
-                            size = Size(100f, 100f),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f)
-                        )
-                        drawRoundRect(
-                            color = Color(0xFFDCE775),
-                            topLeft = Offset(260f, 10f),
-                            size = Size(120f, 80f),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f)
-                        )
-                        drawRoundRect(
-                            color = Color(0xFFB2DFDB),
-                            topLeft = Offset(130f, 150f),
-                            size = Size(200f, 70f),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f)
-                        )
-                        
-                        // University boundary circle label
-                        drawCircle(
-                            color = NavyBlue.copy(alpha = 0.05f),
-                            center = Offset(canvasWidth / 2, canvasHeight / 2),
-                            radius = 160f
-                        )
-
-                        // 1. Draw Connecting path to university target
-                        val universityTarget = Offset(canvasWidth / 2, canvasHeight / 2)
-                        drawLine(
-                            color = NavyBlue,
-                            start = activeOffset,
-                            end = universityTarget,
-                            strokeWidth = 2.dp.toPx(),
-                            pathEffect = pathEffect
-                        )
-
-                        // 2. Draw University Campus central marker (Red Pin)
-                        drawCircle(
-                            color = Terracotta,
-                            center = universityTarget,
-                            radius = 8.dp.toPx()
-                        )
-                        drawCircle(
-                            color = Color.White,
-                            center = universityTarget,
-                            radius = 3.dp.toPx()
-                        )
-
-                        // 3. Pulsating GPS location ring
-                        drawCircle(
-                            color = ProBlue.copy(alpha = pulseAlpha),
-                            center = activeOffset,
-                            radius = pulseRadiusScale.dp.toPx(),
-                            style = Stroke(width = 2.dp.toPx())
-                        )
-
-                        // 4. Draw GPS User location pin (Blue Dot)
-                        drawCircle(
-                            color = ProBlue,
-                            center = activeOffset,
-                            radius = 6.dp.toPx()
-                        )
-                        drawCircle(
-                            color = Color.White,
-                            center = activeOffset,
-                            radius = 2.dp.toPx()
+                    ) {
+                        Marker(
+                            state = MarkerState(position = activeLocation),
+                            title = "Campus: $destination",
+                            snippet = "Sector: $selectedSector"
                         )
                     }
 
@@ -351,10 +297,10 @@ fun GPSConfirmationDialog(
                         )
 
                         Text(
-                            text = "Tu posición (GPS confirmado)",
+                            text = if (locationPermissionsState.allPermissionsGranted) "Tu posición (GPS confirmado)" else "Posición (GPS Denegado)",
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
-                            color = ProBlue,
+                            color = if (locationPermissionsState.allPermissionsGranted) ProBlue else Terracotta,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .background(Color.White.copy(alpha = 0.85f), RoundedCornerShape(4.dp))

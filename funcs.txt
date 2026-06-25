@@ -1,0 +1,27 @@
+62:fun StylizedMapBackground(modifier: Modifier = Modifier, isUserOnCampus: Boolean = false) {
+141:fun UniBuddyApp(viewModel: UniBuddyViewModel) {
+377:fun calculateSubjectCriticality(subjectName: String): String {
+396:fun PresetDropdownField(
+441:fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
+1087:fun SuggestionFactorTag(title: String, value: String, color: Color) {
+1117:fun DashboardScreen(
+1187:    fun requestRealGPSTracking() {
+2932:fun getSubjectColorPalette(colorHex: String): Pair<Color, Color> {
+2948:fun SubjectGridItem(
+3097:fun WeeklyScheduleView(subjects: List<Subject>) {
+3294:fun AttendanceLockedDialog(
+3460:fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> Unit, onConfigureRoute: () -> Unit) {
+3969:fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: () -> Unit) {
+4638:fun SubjectGradeGridCard(
+4858:fun VacationScreen(viewModel: UniBuddyViewModel, onConfigureRoute: () -> Unit) {
+4937:fun AdvancedGradesAnalytics(gradedExams: List<Assessment>, allAssessments: List<Assessment>) {
+5185:fun GradesOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> Unit, onConfigureRoute: () -> Unit) {
+5386:fun SubjectGradesScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: () -> Unit) {
+5843:fun ConfigTabScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit) {
+5975:fun ProfileDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
+6024:fun BadgeDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
+6071:fun RouteSettingsDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
+6134:fun BuddyCustomizationDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
+6241:fun SystemSettingsDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
+6426:fun VisualSchedulePicker(
+6605:fun GradeTimelineProgressBar(

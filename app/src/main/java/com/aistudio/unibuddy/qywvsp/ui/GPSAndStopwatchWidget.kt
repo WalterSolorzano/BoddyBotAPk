@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -149,8 +150,30 @@ fun GPSAndStopwatchWidget(
                 )
             }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            val context = androidx.compose.ui.platform.LocalContext.current
+            Button(
+                onClick = {
+                    val shareIntent = android.content.Intent().apply {
+                        action = android.content.Intent.ACTION_SEND
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Acabo de salir. Mi tiempo estimado de llegada es de $locationBasedTravelMinutes minutos. ¡Te aviso cuando llegue!")
+                        type = "text/plain"
+                    }
+                    context.startActivity(android.content.Intent.createChooser(shareIntent, "Aviso de Viaje Seguro..."))
+                },
+                modifier = Modifier.fillMaxWidth().height(42.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = NavyBlue),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp)
+            ) {
+                Icon(androidx.compose.material.icons.Icons.Default.Security, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Compartir Estado (Viaje Seguro)", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
-            Divider(color = Bone)
+            HorizontalDivider(color = Bone)
             Spacer(modifier = Modifier.height(16.dp))
 
             // -- STOPWATCH --

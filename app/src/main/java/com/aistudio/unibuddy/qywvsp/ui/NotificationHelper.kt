@@ -51,4 +51,56 @@ object NotificationHelper {
             }
         }
     }
+
+    fun sendNextClassNotification(context: Context, subjectId: Int, destinationName: String, title: String, message: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        }
+        
+        val notifId = (System.currentTimeMillis() % 100000).toInt()
+
+        // Action 1: Marcar Asistencia
+        val attendIntent = android.content.Intent(context, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_MARK_ATTENDANCE
+            putExtra(NotificationActionReceiver.EXTRA_SUBJECT_ID, subjectId)
+            putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notifId)
+        }
+        val attendPendingIntent = android.app.PendingIntent.getBroadcast(
+            context,
+            notifId * 2,
+            attendIntent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Action 2: Avisar Retraso
+        val lateIntent = android.content.Intent(context, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_LATE_WARNING
+            putExtra(NotificationActionReceiver.EXTRA_DESTINATION_NAME, destinationName)
+            putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notifId)
+        }
+        val latePendingIntent = android.app.PendingIntent.getBroadcast(
+            context,
+            notifId * 2 + 1,
+            lateIntent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .addAction(android.R.drawable.ic_menu_today, "Marcar Asistencia", attendPendingIntent)
+            .addAction(android.R.drawable.ic_menu_send, "Avisar Retraso", latePendingIntent)
+
+        with(NotificationManagerCompat.from(context)) {
+            try {
+                notify(notifId, builder.build())
+            } catch (e: SecurityException) {
+                e.printStackTrace()
+            }
+        }
+    }
 }

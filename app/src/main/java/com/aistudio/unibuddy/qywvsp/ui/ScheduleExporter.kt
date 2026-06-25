@@ -11,8 +11,11 @@ import android.widget.Toast
 import com.aistudio.unibuddy.qywvsp.data.Subject
 import com.aistudio.unibuddy.qywvsp.data.parseSessions
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 object ScheduleExporter {
-    fun exportToGallery(context: Context, subjects: List<Subject>, universityName: String): Uri? {
+    suspend fun exportToGallery(context: Context, subjects: List<Subject>, universityName: String): Uri? = withContext(Dispatchers.IO) {
         val width = 1200
         val height = 1800
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -112,7 +115,7 @@ object ScheduleExporter {
         days.forEach { (code, name) ->
             val daySessions = mutableListOf<Pair<Subject, com.aistudio.unibuddy.qywvsp.data.ClassSessionDetails>>()
             subjects.forEach { sub ->
-                sub.sessionsJson.parseSessions().forEach { s ->
+                sub.sessions.forEach { s ->
                     if (s.day.equals(code, ignoreCase = true)) {
                         daySessions.add(Pair(sub, s))
                     }
@@ -246,13 +249,17 @@ object ScheduleExporter {
 
             fos?.use {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
-                Toast.makeText(context, "¡Horario guardado en Imágenes/UniBuddy!", Toast.LENGTH_SHORT).show()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "¡Horario guardado en Imágenes/UniBuddy!", Toast.LENGTH_SHORT).show()
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(context, "Error al guardar el horario: ${e.message}", Toast.LENGTH_SHORT).show()
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Error al guardar el horario: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
 
-        return imageUri
+        imageUri
     }
 }

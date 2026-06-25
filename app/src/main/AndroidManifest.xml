@@ -18,6 +18,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
+        
+        <meta-data android:name="com.google.android.geo.API_KEY" android:value="TU_API_KEY_AQUI" />
         <activity
             android:name="com.aistudio.unibuddy.qywvsp.MainActivity"
             android:exported="true"
@@ -28,6 +30,10 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
         
         <service
@@ -36,6 +42,40 @@
             android:exported="false">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Pomodoro timer" />
         </service>
+
+        <receiver android:name="com.aistudio.unibuddy.qywvsp.ui.NotificationActionReceiver" android:exported="false" />
+
+        <receiver
+            android:name=".ui.widget.TamagotchiWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/tamagotchi_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ui.widget.AcademicWeatherWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/weather_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".ui.widget.GradesWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/grades_widget_info" />
+        </receiver>
     </application>
 
 </manifest>

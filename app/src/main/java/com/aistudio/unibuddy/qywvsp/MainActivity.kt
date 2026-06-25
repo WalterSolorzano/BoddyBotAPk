@@ -16,12 +16,22 @@ import com.aistudio.unibuddy.qywvsp.ui.UniBuddyViewModel
 import com.aistudio.unibuddy.qywvsp.ui.UniBuddyViewModelFactory
 import com.aistudio.unibuddy.qywvsp.ui.theme.MyApplicationTheme
 
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+
 class MainActivity : ComponentActivity() {
     private val viewModel: UniBuddyViewModel by viewModels {
         UniBuddyViewModelFactory(application)
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra("destination")?.let {
+            viewModel.handleShortcutDestination(it)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         android.util.Log.d("UniBuddy", "MainActivity onCreate - Version Code: 6, Version Name: 1.5")
         enableEdgeToEdge()
@@ -38,6 +48,10 @@ class MainActivity : ComponentActivity() {
                 android.Manifest.permission.ACCESS_FINE_LOCATION,
                 android.Manifest.permission.ACCESS_COARSE_LOCATION
             ), 101)
+        }
+        
+        intent.getStringExtra("destination")?.let {
+            viewModel.handleShortcutDestination(it)
         }
 
         setContent {

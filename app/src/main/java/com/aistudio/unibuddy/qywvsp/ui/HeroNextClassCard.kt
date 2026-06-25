@@ -31,7 +31,7 @@ fun HeroNextClassCard(
     if (subject == null) {
         Card(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F6)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             shape = RoundedCornerShape(24.dp)
         ) {
             Column(
@@ -50,16 +50,15 @@ fun HeroNextClassCard(
     val isLate = false // Mocked for now, in reality based on current time vs classTime
     val isCritical = faltasRestantes <= 2
     
-    val bgColor = if (isExamMode) Color(0xFFFFF1F1) else if (isLate) Color(0xFFFFF7ED) else Color(0xFFF0FDF4)
+    val bgColor = if (isExamMode) MaterialTheme.colorScheme.errorContainer else if (isLate) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer
     val borderColor = if (isExamMode) Terracotta else if (isLate) Amber else DarkGreen
     
-    Card(
+    ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 16.dp)
-            .shadow(if (isExamMode) 12.dp else 4.dp, RoundedCornerShape(24.dp)),
-        colors = CardDefaults.cardColors(containerColor = bgColor),
-        border = BorderStroke(2.dp, borderColor),
+            .padding(bottom = 16.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = bgColor),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (isExamMode) 12.dp else 4.dp),
         shape = RoundedCornerShape(24.dp)
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
@@ -129,7 +128,6 @@ fun HeroNextClassCard(
                 Spacer(modifier = Modifier.width(12.dp))
                 
                 // Weather Forecast for the Class Time
-                val weatherText = "🌤️ 18°C"
                 val weatherDesc = "Lleva chaqueta ligera. 10% lluvia."
                 Column(
                     modifier = Modifier.weight(1f)
@@ -137,7 +135,12 @@ fun HeroNextClassCard(
                         .background(Color.White.copy(alpha=0.5f))
                         .padding(8.dp)
                 ) {
-                    Text(weatherText, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = NavyBlue)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.WbSunny, contentDescription = null, tint = NavyBlue, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("18°C", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = NavyBlue)
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(weatherDesc, fontSize = 11.sp, color = SlateGray, lineHeight = 13.sp)
                 }
             }

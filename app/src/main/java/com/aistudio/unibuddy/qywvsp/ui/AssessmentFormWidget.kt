@@ -27,26 +27,61 @@ import com.aistudio.unibuddy.qywvsp.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
-import android.app.DatePickerDialog
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AssessmentFormWidget(
     subject: Subject,
-    onSave: (name: String, grade: Double?, percent: Double, dateStr: String) -> Unit
+    onSave: suspend (name: String, grade: Double?, percent: Double, dateStr: String) -> Unit
 ) {
     val context = LocalContext.current
-    var isExamType by remember { mutableStateOf(true) } // true: Examen, false: Trabajo
-    var examName by remember { mutableStateOf("") }
-    var examGrade by remember { mutableStateOf("") }
+    var isExamType by rememberSaveable { mutableStateOf(true) } // true: Examen, false: Trabajo
+    var examName by rememberSaveable { mutableStateOf("") }
+    var examGrade by rememberSaveable { mutableStateOf("") }
     
     // Auto percentage based on type
-    var customPercent by remember { mutableStateOf("") }
+    var customPercent by rememberSaveable { mutableStateOf("") }
     val effectivePercent = customPercent.ifBlank { if (isExamType) "15" else "7" }
     
     val dateFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
-    var selectedDateStr by remember { mutableStateOf(dateFormatter.format(Calendar.getInstance().time)) }
+    var selectedDateStr by rememberSaveable { mutableStateOf(dateFormatter.format(Calendar.getInstance().time)) }
     
-    var examNameError by remember { mutableStateOf(false) }
+    var examNameError by rememberSaveable { mutableStateOf(false) }
+    var examGradeError by rememberSaveable { mutableStateOf(false) }
+    var isSaving by rememberSaveable { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = Calendar.getInstance().timeInMillis
+    )
+
+    if (showDatePicker) {
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDatePicker = false
+                    datePickerState.selectedDateMillis?.let {
+                        val cal = Calendar.getInstance().apply { timeInMillis = it }
+                        selectedDateStr = dateFormatter.format(cal.time)
+                    }
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancelar")
+                }
+            }
+        ) {
+            androidx.compose.material3.DatePicker(state = datePickerState)
+        }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -59,28 +94,20 @@ fun AssessmentFormWidget(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Type Selector
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
-                        .background(if (isExamType) DarkGreen else Bone)
-                        .clickable { isExamType = true }
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SegmentedButton(
+                    selected = isExamType,
+                    onClick = { if (!isSaving) isExamType = true },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
                 ) {
-                    Text("Examen", color = if (isExamType) Bone else SlateGray, fontWeight = FontWeight.Bold)
+                    Text("Examen")
                 }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
-                        .background(if (!isExamType) DarkGreen else Bone)
-                        .clickable { isExamType = false }
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
+                SegmentedButton(
+                    selected = !isExamType,
+                    onClick = { if (!isSaving) isExamType = false },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
                 ) {
-                    Text("Trabajo", color = if (!isExamType) Bone else SlateGray, fontWeight = FontWeight.Bold)
+                    Text("Trabajo")
                 }
             }
 
@@ -109,14 +136,11 @@ fun AssessmentFormWidget(
                 readOnly = true,
                 label = { Text("Fecha programada") },
                 trailingIcon = {
-                    IconButton(onClick = {
-                        val cal = Calendar.getInstance()
-                        DatePickerDialog(context, { _, year, month, dayOfMonth ->
-                            val selectedCal = Calendar.getInstance()
-                            selectedCal.set(year, month, dayOfMonth)
-                            selectedDateStr = dateFormatter.format(selectedCal.time)
-                        }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
-                    }) {
+                    IconButton(
+                        onClick = {
+                            if (!isSaving) showDatePicker = true
+                        }
+                    ) {
                         Icon(Icons.Default.DateRange, contentDescription = "Seleccionar Fecha", tint = DarkGreen)
                     }
                 },
@@ -129,9 +153,17 @@ fun AssessmentFormWidget(
             Row(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = examGrade,
-                    onValueChange = { examGrade = it.filter { char -> char.isDigit() || char == '.' } },
+                    onValueChange = { 
+                        val filtered = it.filter { char -> char.isDigit() || char == '.' }
+                        if (filtered.count { char -> char == '.' } <= 1) {
+                            examGrade = filtered
+                            examGradeError = examGrade.isNotEmpty() && examGrade.toDoubleOrNull() == null
+                        }
+                    },
                     label = { Text("Nota (ej: 75.0)") },
                     placeholder = { Text("Vacío si pendiente") },
+                    isError = examGradeError,
+                    supportingText = { if (examGradeError) Text("Formato inválido", color = Terracotta) },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -154,24 +186,38 @@ fun AssessmentFormWidget(
             val hapticFeedback = LocalHapticFeedback.current
             Button(
                 onClick = {
+                    if (isSaving) return@Button
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                     examNameError = examName.isBlank()
+                    examGradeError = examGrade.isNotEmpty() && examGrade.toDoubleOrNull() == null
 
-                    if (examName.isNotBlank()) {
-                        val percentVal = effectivePercent.toDoubleOrNull() ?: if (isExamType) 15.0 else 7.0
-                        val gradeVal = examGrade.toDoubleOrNull()
-                        val finalName = if (isExamType) "Examen: $examName" else "Trabajo: $examName"
-                        onSave(finalName, gradeVal, percentVal, selectedDateStr)
-                        examName = ""
-                        examGrade = ""
-                        customPercent = ""
-                        examNameError = false
+                    if (!examNameError && !examGradeError) {
+                        isSaving = true
+                        coroutineScope.launch {
+                            try {
+                                val percentVal = effectivePercent.toDoubleOrNull() ?: if (isExamType) 15.0 else 7.0
+                                val gradeVal = examGrade.toDoubleOrNull()
+                                val finalName = if (isExamType) "Examen: $examName" else "Trabajo: $examName"
+                                onSave(finalName, gradeVal, percentVal, selectedDateStr)
+                                
+                                // Reset state
+                                examName = ""
+                                examGrade = ""
+                                customPercent = ""
+                                examNameError = false
+                                examGradeError = false
+                                delay(500) // simple debounce
+                            } finally {
+                                isSaving = false
+                            }
+                        }
                     }
                 },
                 modifier = Modifier.align(Alignment.End),
+                enabled = !isSaving,
                 colors = ButtonDefaults.buttonColors(containerColor = DarkGreen)
             ) {
-                Text("Guardar", color = Bone)
+                Text(if (isSaving) "Guardando..." else "Guardar", color = Bone)
             }
         }
     }

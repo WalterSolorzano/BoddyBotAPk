@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">UniBuddy</string>
+    
+    <string name="shortcut_schedule_short">Horario</string>
+    <string name="shortcut_schedule_long">Ir a mi Horario</string>
+    <string name="shortcut_focus_short">Focus</string>
+    <string name="shortcut_focus_long">Iniciar Focus Mode</string>
+    <string name="shortcut_travel_short">Viaje Seguro</string>
+    <string name="shortcut_travel_long">Enviar Viaje Seguro</string>
 </resources>

@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aistudio.unibuddy.qywvsp.ui.components.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aistudio.unibuddy.qywvsp.ui.theme.*
 import kotlinx.coroutines.delay
@@ -160,18 +161,20 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
     var isPlayingAmbient by remember { mutableStateOf(false) }
 
     // Syncing UI timer state with Service
-    LaunchedEffect(Unit) {
-        while (true) {
-            if (PomodoroService.isRunningInService) {
-                isRunning = true
-                timeLeft = PomodoroService.timeLeftSeconds
-                isWorkMode = PomodoroService.currentModeIsWork
-            } else if (PomodoroService.isPaused) {
-                isRunning = false
-                timeLeft = PomodoroService.timeLeftSeconds
-                isWorkMode = PomodoroService.currentModeIsWork
-            }
-            delay(250L)
+    val svcTimeLeft by PomodoroState.timeLeftSeconds.collectAsStateWithLifecycle()
+    val svcIsRunning by PomodoroState.isRunning.collectAsStateWithLifecycle()
+    val svcIsPaused by PomodoroState.isPaused.collectAsStateWithLifecycle()
+    val svcIsWork by PomodoroState.isWorkMode.collectAsStateWithLifecycle()
+
+    LaunchedEffect(svcTimeLeft, svcIsRunning, svcIsPaused, svcIsWork) {
+        if (svcIsRunning) {
+            isRunning = true
+            timeLeft = svcTimeLeft
+            isWorkMode = svcIsWork
+        } else if (svcIsPaused) {
+            isRunning = false
+            timeLeft = svcTimeLeft
+            isWorkMode = svcIsWork
         }
     }
 
@@ -441,7 +444,7 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
                                 isRunning = !isRunning
                                 val intent = android.content.Intent(context, PomodoroService::class.java).apply {
                                     if (isRunning) {
-                                        if (PomodoroService.isPaused) {
+                                        if (PomodoroState.isPaused.value) {
                                             action = PomodoroService.ACTION_RESUME
                                         } else {
                                             action = PomodoroService.ACTION_START
@@ -452,7 +455,7 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
                                         action = PomodoroService.ACTION_PAUSE
                                     }
                                 }
-                                if (isRunning && !PomodoroService.isPaused) {
+                                if (isRunning && !PomodoroState.isPaused.value) {
                                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                                         context.startForegroundService(intent)
                                     } else {

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="schedule"
+        android:enabled="true"
+        android:icon="@android:drawable/ic_menu_today"
+        android:shortcutShortLabel="@string/shortcut_schedule_short"
+        android:shortcutLongLabel="@string/shortcut_schedule_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.aistudio.unibuddy.qywvsp"
+            android:targetClass="com.aistudio.unibuddy.qywvsp.MainActivity">
+            <extra android:name="destination" android:value="schedule" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="focus_mode"
+        android:enabled="true"
+        android:icon="@android:drawable/ic_menu_recent_history"
+        android:shortcutShortLabel="@string/shortcut_focus_short"
+        android:shortcutLongLabel="@string/shortcut_focus_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.aistudio.unibuddy.qywvsp"
+            android:targetClass="com.aistudio.unibuddy.qywvsp.MainActivity">
+            <extra android:name="destination" android:value="focus" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="safe_travel"
+        android:enabled="true"
+        android:icon="@android:drawable/ic_menu_mylocation"
+        android:shortcutShortLabel="@string/shortcut_travel_short"
+        android:shortcutLongLabel="@string/shortcut_travel_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.aistudio.unibuddy.qywvsp"
+            android:targetClass="com.aistudio.unibuddy.qywvsp.MainActivity">
+            <extra android:name="destination" android:value="safe_travel" />
+        </intent>
+    </shortcut>
+</shortcuts>

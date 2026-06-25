@@ -8,11 +8,19 @@ import androidx.lifecycle.viewModelScope
 import com.aistudio.unibuddy.qywvsp.data.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import org.json.JSONObject
 import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.*
 
+
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBox
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Star
 class UniBuddyViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: UniBuddyRepository
 
@@ -23,7 +31,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         val db = AppDatabase.getDatabase(application)
         repository = UniBuddyRepository(db)
         
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Load settings with individual try-catch to prevent one bad setting from blocking others
                 repository.getSetting("origin")?.let { _origin.value = it }
@@ -42,6 +50,8 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 repository.getSetting("weather_desc")?.let { _weatherDescription.value = it }
                 try { repository.getSetting("is_raining")?.let { _isRaining.value = it.toBoolean() } } catch(e: Exception) {}
                 try { repository.getSetting("semester_start_date")?.let { _semesterStartDate.value = it.toLong() } } catch(e: Exception) {}
+                try { repository.getSetting("auto_checkin_enabled")?.let { _autoCheckinEnabled.value = it.toBoolean() } } catch(e: Exception) {}
+                try { repository.getSetting("smart_silence_enabled")?.let { _smartSilenceEnabled.value = it.toBoolean() } } catch(e: Exception) {}
                 repository.getSetting("passed_subjects")?.let { _passedSubjects.value = it.split(",").filter { s -> s.isNotEmpty() }.toSet() }
                 repository.getSetting("focus_objectives")?.let { _focusObjectivesJson.value = it }
                 repository.getSetting("focus_sessions_history")?.let { _focusSessionsHistoryJson.value = it }
@@ -71,6 +81,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 
                 checkAndInitializeBadges()
                 refreshWeather()
+                checkAndTriggerProactiveNotifications()
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -79,14 +90,62 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private suspend fun checkAndTriggerProactiveNotifications() {
+        // Evaluate today's classes and exams for notifications
+        val sdf = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+        val todayStr = sdf.format(Date())
+        val dayOfWeekFormat = SimpleDateFormat("EEEE", Locale("es", "ES"))
+        var currentDayStr = dayOfWeekFormat.format(Date()).take(2).replaceFirstChar { it.uppercase() }
+        if (currentDayStr == "Má" || currentDayStr == "Ma") currentDayStr = "Ma"
+        if (currentDayStr == "Mi") currentDayStr = "Mi"
+        if (currentDayStr == "Ju") currentDayStr = "Ju"
+        if (currentDayStr == "Vi") currentDayStr = "Vi"
+        if (currentDayStr == "Sá" || currentDayStr == "Sa") currentDayStr = "Sa"
+        if (currentDayStr == "Do") currentDayStr = "Do"
+        if (currentDayStr == "Lu") currentDayStr = "Lu"
+
+        val currentSubjects = repository.subjects.first()
+        val todayClasses = currentSubjects.filter { it.schedule.contains(currentDayStr, ignoreCase = true) }
+        
+        // 1. Tienes Examen Hoy
+        val allAssessments = repository.assessments.first()
+        val todayExams = allAssessments.filter { it.examDate == todayStr }
+        if (todayExams.isNotEmpty()) {
+            val examNames = todayExams.joinToString(", ") { it.name }
+            NotificationHelper.sendNotification(
+                getApplication(), 
+                "¡Día de Examen!", 
+                "Hoy tienes examen de: $examNames. ¡Mucho éxito!"
+            )
+        }
+
+        // 2. Próxima Clase (Vas bien / Llegas tarde)
+        if (todayClasses.isNotEmpty()) {
+            // Find next class (mocking for simplicity, picking the first one)
+            val nextClass = todayClasses.first()
+            val time = nextClass.sessions.firstOrNull { it.day.equals(currentDayStr, ignoreCase = true) }?.time ?: ""
+            val travelMins = _baseTravelTime.value
+            
+            // Assume the user has an arrival margin preference
+            val destName = _destination.value
+            NotificationHelper.sendNextClassNotification(
+                getApplication(),
+                nextClass.id,
+                destName,
+                "Tu próxima clase es ${nextClass.name}",
+                "Empieza a las $time. Tu tiempo de viaje es de $travelMins min. Toca aquí para marcar asistencia o avisar retraso."
+            )
+        }
+    }
+
     private suspend fun checkAndInitializeBadges() {
         val existing = repository.badges.first()
         if (existing.isEmpty()) {
             val initialBadges = listOf(
-                Badge(name = "Primeros Pasos", description = "Completa el onboarding de la app.", iconEmoji = " ", category = "General", isUnlocked = _isOnboardingCompleted.value),
-                Badge(name = "Estudiante Responsable", description = "Registra 5 días de asistencia perfecta.", iconEmoji = " ", category = "Attendance"),
-                Badge(name = "En el Top", description = "Alcanza un promedio mayor a 90 en una materia.", iconEmoji = " ", category = "Grades"),
-                Badge(name = "Concentración Total", description = "Usa el modo focus por más de 1 hora.", iconEmoji = " ", category = "Focus")
+                Badge(name = "Primeros Pasos", description = "Completa el onboarding de la app.", iconId = "CheckCircle", category = "General", isUnlocked = _isOnboardingCompleted.value),
+                Badge(name = "Estudiante Responsable", description = "Registra 5 días de asistencia perfecta.", iconId = "EventAvailable", category = "Attendance"),
+                Badge(name = "En el Top", description = "Alcanza un promedio mayor a 90 en una materia.", iconId = "Star", category = "Grades"),
+                Badge(name = "Concentración Total", description = "Usa el modo focus por más de 1 hora.", iconId = "SelfImprovement", category = "Focus")
             )
             for (badge in initialBadges) {
                 repository.insertBadge(badge)
@@ -170,6 +229,12 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     private val _isRaining = MutableStateFlow(false)
     val isRaining: StateFlow<Boolean> = _isRaining.asStateFlow()
 
+    private val _autoCheckinEnabled = MutableStateFlow(false)
+    val autoCheckinEnabled: StateFlow<Boolean> = _autoCheckinEnabled.asStateFlow()
+
+    private val _smartSilenceEnabled = MutableStateFlow(false)
+    val smartSilenceEnabled: StateFlow<Boolean> = _smartSilenceEnabled.asStateFlow()
+
     private val _semesterStartDate = MutableStateFlow<Long?>(null)
     val semesterStartDate: StateFlow<Long?> = _semesterStartDate.asStateFlow()
 
@@ -240,6 +305,20 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setAutoCheckinEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            _autoCheckinEnabled.value = enabled
+            repository.saveSetting("auto_checkin_enabled", enabled.toString())
+        }
+    }
+
+    fun setSmartSilenceEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            _smartSilenceEnabled.value = enabled
+            repository.saveSetting("smart_silence_enabled", enabled.toString())
+        }
+    }
+
     fun updateSemesterStartByWeek(week: Int) {
         viewModelScope.launch {
             val millisInWeek = 7L * 24L * 60L * 60L * 1000L
@@ -262,6 +341,12 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
 
     private val _isFetchingWeather = MutableStateFlow(false)
     val isFetchingWeather: StateFlow<Boolean> = _isFetchingWeather.asStateFlow()
+
+    val academicHistory: StateFlow<List<AcademicRecordWithSubject>> = repository.fullAcademicHistory.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
     private val _weeklyStreak = MutableStateFlow(12)
     val weeklyStreak: StateFlow<Int> = _weeklyStreak.asStateFlow()
@@ -331,13 +416,13 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     data class Campus(val name: String, val lat: Double, val lng: Double)
-    data class UniversityData(val name: String, val shortName: String, val logoEmoji: String, val campuses: List<Campus>)
+    data class UniversityData(val name: String, val shortName: String, val logoIcon: androidx.compose.ui.graphics.vector.ImageVector, val campuses: List<Campus>)
 
     val universities = listOf(
         UniversityData(
             name = "Universidad Nacional de Ingeniería",
             shortName = "UNI",
-            logoEmoji = "🏗️",
+            logoIcon = Icons.Default.Home,
             campuses = listOf(
                 Campus("RUPAP", 12.1475, -86.2208),
                 Campus("RUSB", 12.1264, -86.2711)
@@ -346,7 +431,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         UniversityData(
             name = "UNAN-Managua",
             shortName = "UNAN",
-            logoEmoji = "📚",
+            logoIcon = Icons.Default.Place,
             campuses = listOf(
                 Campus("Recinto Rubén Darío", 12.1192, -86.2644)
             )
@@ -354,7 +439,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         UniversityData(
             name = "Universidad Casimiro Sotelo",
             shortName = "UCS",
-            logoEmoji = "🏛️",
+            logoIcon = Icons.Default.AccountBox,
             campuses = listOf(
                 Campus("Sede Central", 12.1258, -86.2708)
             )
@@ -362,7 +447,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         UniversityData(
             name = "Universidad Politécnica de Nicaragua",
             shortName = "UPOLI",
-            logoEmoji = "💻",
+            logoIcon = Icons.Default.Info,
             campuses = listOf(
                 Campus("Sede Central", 12.1419, -86.2253)
             )
@@ -370,7 +455,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         UniversityData(
             name = "Universidad Americana",
             shortName = "UAM",
-            logoEmoji = "🦅",
+            logoIcon = Icons.Default.Star,
             campuses = listOf(
                 Campus("Campus Principal", 12.1156, -86.2369)
             )
@@ -410,52 +495,22 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private val _shortcutDestination = MutableStateFlow<String?>(null)
+    val shortcutDestination: StateFlow<String?> = _shortcutDestination.asStateFlow()
+
+    fun handleShortcutDestination(destination: String) {
+        _shortcutDestination.value = destination
+    }
+
+    fun clearShortcutDestination() {
+        _shortcutDestination.value = null
+    }
+
     // Methods
     fun updateOnboardingStatus(completed: Boolean) {
         viewModelScope.launch {
             _isOnboardingCompleted.value = completed
             repository.saveSetting("onboarding_completed", completed.toString())
-        }
-    }
-
-    fun loadDemoData() {
-        viewModelScope.launch {
-            // Delete old data
-            val currentSubjects = repository.subjects.first()
-            for (sub in currentSubjects) {
-                repository.deleteSubject(sub)
-            }
-            
-            // Insert dummy subjects
-            val s1 = Subject(name = "Álgebra Lineal", schedule = "Lu, Mi", sessionsJson = "[{\"day\":\"Lu\",\"block\":\"M1\",\"room\":\"Aula 1\"},{\"day\":\"Mi\",\"block\":\"M1\",\"room\":\"Aula 1\"}]", requiredAttendancePercent = 70, totalClasses = 28, colorHex = "#FFCDD2")
-            val s2 = Subject(name = "Física General", schedule = "Ma, Ju", sessionsJson = "[{\"day\":\"Ma\",\"block\":\"M3\",\"room\":\"Lab 2\"},{\"day\":\"Ju\",\"block\":\"M3\",\"room\":\"Lab 2\"}]", requiredAttendancePercent = 80, totalClasses = 28, colorHex = "#E1BEE7")
-            val s3 = Subject(name = "Programación I", schedule = "Vi", sessionsJson = "[{\"day\":\"Vi\",\"block\":\"M5\",\"room\":\"Lab Comp\"}]", requiredAttendancePercent = 75, totalClasses = 14, colorHex = "#BBDEFB")
-            
-            val id1 = repository.insertSubject(s1).toInt()
-            val id2 = repository.insertSubject(s2).toInt()
-            val id3 = repository.insertSubject(s3).toInt()
-            
-            // Assessments
-            repository.insertAssessment(Assessment(subjectId = id1, name = "Parcial 1", grade = 85.0, percentage = 30.0))
-            repository.insertAssessment(Assessment(subjectId = id1, name = "Parcial 2", grade = 90.0, percentage = 30.0))
-            repository.insertAssessment(Assessment(subjectId = id2, name = "Lab 1", grade = 100.0, percentage = 20.0))
-            repository.insertAssessment(Assessment(subjectId = id3, name = "Proyecto Final", grade = 95.0, percentage = 50.0))
-            
-            // Logs
-            val sdf = SimpleDateFormat("dd MMM", Locale.getDefault())
-            val date1 = sdf.format(Date(System.currentTimeMillis() - 86400000L * 2))
-            val date2 = sdf.format(Date(System.currentTimeMillis() - 86400000L * 1))
-            
-            repository.insertAttendanceLog(AttendanceLog(subjectId = id1, date = date1, isPresent = true))
-            repository.insertAttendanceLog(AttendanceLog(subjectId = id2, date = date1, isPresent = false))
-            repository.insertAbsence(Absence(subjectId = id2, date = date1))
-            repository.insertAttendanceLog(AttendanceLog(subjectId = id3, date = date2, isPresent = true))
-            
-            val now = System.currentTimeMillis()
-            _semesterStartDate.value = now
-            repository.saveSetting("semester_start_date", now.toString())
-            _isOnboardingCompleted.value = true
-            repository.saveSetting("onboarding_completed", "true")
         }
     }
 
@@ -479,6 +534,13 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _career.value = careerName
             repository.saveSetting("career", careerName)
+        }
+    }
+
+    fun saveUserUniversity(universityName: String) {
+        viewModelScope.launch {
+            _userUniversity.value = universityName
+            repository.saveSetting("user_university", universityName)
         }
     }
 
@@ -522,6 +584,38 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _arrivalMarginPreference.value = pref
             repository.saveSetting("arrival_margin_preference", pref)
+        }
+    }
+
+    fun importAcademicRecords(subjects: List<HistorialParser.ParsedSubject>) {
+        viewModelScope.launch {
+            val careerId = repository.getOrCreateCareer(
+                universityName = _userUniversity.value ?: "UNI",
+                campusName = _destination.value,
+                careerName = _career.value
+            )
+            
+            subjects.forEach { parsed ->
+                val subjectId = repository.insertPensumSubject(
+                    PensumSubject(
+                        careerId = careerId,
+                        code = parsed.code,
+                        name = parsed.name,
+                        semester = "S/D", // Derived from parsed data if possible
+                        credits = parsed.credits,
+                        isNumbers = false
+                    )
+                )
+                repository.insertAcademicRecord(
+                    AcademicRecord(
+                        pensumSubjectId = subjectId.toInt(),
+                        grade = parsed.grade,
+                        status = parsed.status,
+                        year = "S/D",
+                        academicGroup = parsed.group
+                    )
+                )
+            }
         }
     }
 
@@ -570,12 +664,12 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         _isRaining.value = !_isRaining.value
     }
 
-    fun addSubject(name: String, schedule: String, sessionsJson: String, requiredAttendancePercent: Int, totalClasses: Int, colorHex: String = "#FFB3E5FC") {
+    fun addSubject(name: String, schedule: String, sessions: List<com.aistudio.unibuddy.qywvsp.data.ClassSessionDetails>, requiredAttendancePercent: Int, totalClasses: Int, colorHex: String = "#FFB3E5FC") {
         viewModelScope.launch {
             val subject = Subject(
                 name = name,
                 schedule = schedule,
-                sessionsJson = sessionsJson,
+                sessions = sessions,
                 requiredAttendancePercent = requiredAttendancePercent,
                 totalClasses = totalClasses,
                 colorHex = colorHex
@@ -845,7 +939,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 val subObj = JSONObject()
                 subObj.put("name", sub.name)
                 subObj.put("schedule", sub.schedule)
-                subObj.put("sessionsJson", sub.sessionsJson)
+                subObj.put("sessionsJson", com.aistudio.unibuddy.qywvsp.data.Converters().fromList(sub.sessions))
                 subObj.put("requiredAttendancePercent", sub.requiredAttendancePercent)
                 subObj.put("totalClasses", sub.totalClasses)
                 subObj.put("colorHex", sub.colorHex)
@@ -927,7 +1021,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                         val sub = Subject(
                             name = subObj.getString("name"),
                             schedule = subObj.getString("schedule"),
-                            sessionsJson = subObj.optString("sessionsJson", "[]"),
+                            sessions = com.aistudio.unibuddy.qywvsp.data.Converters().fromString(subObj.optString("sessionsJson", "[]")),
                             requiredAttendancePercent = subObj.getInt("requiredAttendancePercent"),
                             totalClasses = subObj.getInt("totalClasses"),
                             colorHex = subObj.optString("colorHex", "#FFB3E5FC")

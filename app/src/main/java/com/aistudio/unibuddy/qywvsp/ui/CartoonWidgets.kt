@@ -7,11 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
-import androidx.compose.material3.Surface
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -93,25 +89,15 @@ fun DashboardCartoonWidgets(widgets: List<CartoonWidgetData>, isRaining: Boolean
             pageSpacing = 16.dp
         ) { page ->
             val widget = widgets[page]
-            val shadowModifier = if (widget.isAlert) {
-                Modifier.shadow(16.dp, RoundedCornerShape(24.dp), ambientColor = widget.borderColor, spotColor = widget.borderColor)
-            } else {
-                Modifier.shadow(6.dp, RoundedCornerShape(24.dp))
-            }
-
-            Box(
+            ElevatedCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(160.dp)
-                    .then(shadowModifier)
+                    .height(160.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = widget.bgColor),
+                elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (widget.isAlert) 16.dp else 6.dp)
             ) {
-                Card(
-                    modifier = Modifier.fillMaxSize(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = widget.bgColor),
-                    border = BorderStroke(if (widget.isAlert) 4.dp else 3.dp, widget.borderColor)
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxSize()) {
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -173,7 +159,6 @@ fun DashboardCartoonWidgets(widgets: List<CartoonWidgetData>, isRaining: Boolean
                             RainOverlay()
                         }
                     }
-                }
             }
         }
         
@@ -215,7 +200,7 @@ fun CartoonScheduleWidget(
     val todayClasses = remember(subjects) {
         val list = mutableListOf<Pair<com.aistudio.unibuddy.qywvsp.data.Subject, com.aistudio.unibuddy.qywvsp.data.ClassSessionDetails>>()
         subjects.forEach { sub ->
-            sub.sessionsJson.parseSessions().forEach { session ->
+            sub.sessions.forEach { session ->
                 if (session.day.equals(todayCode, ignoreCase = true)) {
                     list.add(Pair(sub, session))
                 }

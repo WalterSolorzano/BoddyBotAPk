@@ -101,16 +101,11 @@ fun SessionEditor(
                     // Check if block is occupied by ANOTHER subject
                     var occupiedBy: Subject? = null
                     for (sub in allSubjects) {
-                        try {
-                            val arr = JSONArray(sub.sessionsJson)
-                            for (i in 0 until arr.length()) {
-                                val obj = arr.getJSONObject(i)
-                                if (obj.optString("day") == day && obj.optString("time") == block.id) {
-                                    occupiedBy = sub
-                                    break
-                                }
-                            }
-                        } catch (e: Exception) { }
+                        val session = sub.sessions.find { it.day == day && it.time == block.id }
+                        if (session != null) {
+                            occupiedBy = sub
+                            break
+                        }
                     }
 
                     // Check if block is selected for CURRENT subject

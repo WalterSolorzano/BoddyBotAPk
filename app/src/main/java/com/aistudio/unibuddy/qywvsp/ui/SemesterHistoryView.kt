@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aistudio.unibuddy.qywvsp.ui.components.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aistudio.unibuddy.qywvsp.data.Assessment
 import com.aistudio.unibuddy.qywvsp.data.AttendanceLog
@@ -138,7 +139,7 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel) {
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            listOf("asistencias" to "Asistencias", "examenes" to "Notas", "gps" to "Traslados").forEach { (tabKey, tabLabel) ->
+            listOf("oficial" to "Oficial", "asistencias" to "Asist.", "examenes" to "Notas", "gps" to "Viajes").forEach { (tabKey, tabLabel) ->
                 val isSelected = logTab == tabKey
                 Box(
                     modifier = Modifier
@@ -161,6 +162,9 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel) {
 
         // Conditional display based on tab selection
         when (logTab) {
+            "oficial" -> {
+                AdvancedAcademicStatistics(viewModel)
+            }
             "asistencias" -> {
                 if (attendanceLogs.isEmpty()) {
                     EmptyHistoryPlaceholder("No hay asistencias registradas aún.")
@@ -509,4 +513,123 @@ private fun generateTripsCsv(trips: List<TripRecord>): String {
         sb.append("${trip.id},\"${trip.date}\",${trip.durationMinutes},${if (trip.wasRaining) "Si" else "No"}\n")
     }
     return sb.toString()
+}
+
+@Composable
+fun AdvancedAcademicStatistics(viewModel: UniBuddyViewModel) {
+    val history by viewModel.academicHistory.collectAsStateWithLifecycle()
+
+    if (history.isEmpty()) {
+        EmptyHistoryPlaceholder("No hay historial académico oficial. Ve a Configuración y presiona 'Importar PDF'.")
+        return
+    }
+
+    val totalCredits = history.sumOf { it.credits }
+    val validGrades = history.filter { it.record.grade > 0.0 }
+    val averageGrade = if (validGrades.isNotEmpty()) validGrades.map { it.record.grade }.average() else 0.0
+    val totalSubjects = history.size
+    val passedSubjects = history.count { it.record.status.name == "NF_R" }
+    val survivalRate = if (totalSubjects > 0) (passedSubjects.toFloat() / totalSubjects.toFloat() * 100f).toInt() else 0
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Card(
+                modifier = Modifier.weight(1f).shadow(1.dp, RoundedCornerShape(16.dp)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8EAF6)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Promedio Global", fontSize = 11.sp, color = Color(0xFF283593), fontWeight = FontWeight.Bold)
+                    Text(String.format("%.2f", averageGrade), fontSize = 20.sp, color = NavyBlue, fontWeight = FontWeight.Black)
+                }
+            }
+
+            Card(
+                modifier = Modifier.weight(1f).shadow(1.dp, RoundedCornerShape(16.dp)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F8E9)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Supervivencia", fontSize = 11.sp, color = Color(0xFF33691E), fontWeight = FontWeight.Bold)
+                    Text("$survivalRate%", fontSize = 20.sp, color = NavyBlue, fontWeight = FontWeight.Black)
+                }
+            }
+        }
+
+        // Gráfico simple de promedios por semestre
+        val semesterAverages = validGrades.groupBy { it.semester }.mapValues { (_, records) ->
+            records.map { it.record.grade }.average()
+        }.toList().sortedBy { it.first }
+
+        if (semesterAverages.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(16.dp)),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Evolución por Semestre", fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(120.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        val maxGrade = semesterAverages.maxOf { it.second }.toFloat().coerceAtLeast(10f)
+                        semesterAverages.forEach { (semester, avg) ->
+                            val barHeightWeight = (avg.toFloat() / maxGrade).coerceIn(0.1f, 1f)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Bottom,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(String.format("%.1f", avg), fontSize = 9.sp, color = SlateGray, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(0.6f)
+                                        .fillMaxHeight(barHeightWeight)
+                                        .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                        .background(if (avg >= 60) ProBlue else Color(0xFFEF5350))
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(semester.take(3), fontSize = 9.sp, color = NavyBlue, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // List of records
+        Text("Desglose Histórico", fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            history.forEach { record ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White, RoundedCornerShape(12.dp))
+                        .border(1.dp, Color.LightGray.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(record.subjectName, fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 12.sp)
+                        Text("${record.record.academicGroup} | Semestre: ${record.semester} | Cred: ${record.credits}", fontSize = 10.sp, color = SlateGray)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(String.format("%.1f", record.record.grade), fontWeight = FontWeight.Black, color = if (record.record.grade >= 60) DarkGreen else Color.Red, fontSize = 14.sp)
+                        Text(record.record.status.name, fontSize = 9.sp, color = SlateGray, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
 }

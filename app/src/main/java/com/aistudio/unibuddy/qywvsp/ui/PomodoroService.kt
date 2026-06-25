@@ -28,11 +28,6 @@ class PomodoroService : Service() {
         const val EXTRA_IS_WORK = "EXTRA_IS_WORK"
         const val NOTIFICATION_ID = 1001
         const val CHANNEL_ID = "pomodoro_channel"
-        
-        var isRunningInService = false
-        var isPaused = false
-        var timeLeftSeconds = 0
-        var currentModeIsWork = true
     }
 
     override fun onCreate() {
@@ -46,8 +41,9 @@ class PomodoroService : Service() {
             ACTION_START -> {
                 val minutes = intent.getIntExtra(EXTRA_MINUTES, 25)
                 isWorkMode = intent.getBooleanExtra(EXTRA_IS_WORK, true)
-                timeLeftSeconds = minutes * 60
-                isPaused = false
+                val timeLeftSeconds = minutes * 60
+                PomodoroState.updateTime(timeLeftSeconds)
+                PomodoroState.setPaused(false)
                 startTimerFromSeconds(timeLeftSeconds)
             }
             ACTION_STOP -> {
@@ -66,14 +62,15 @@ class PomodoroService : Service() {
 
     private fun startTimerFromSeconds(seconds: Int) {
         countDownTimer?.cancel()
-        isRunningInService = true
-        currentModeIsWork = isWorkMode
-        isPaused = false
+        PomodoroState.setRunning(true)
+        PomodoroState.setWorkMode(isWorkMode)
+        PomodoroState.setPaused(false)
         
         val totalMillis = seconds * 1000L
         
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
+        var timeLeftSeconds = seconds
         val min = timeLeftSeconds / 60
         val sec = timeLeftSeconds % 60
         val timeStr = String.format("%02d:%02d", min, sec)
@@ -82,6 +79,7 @@ class PomodoroService : Service() {
         countDownTimer = object : CountDownTimer(totalMillis, 1000) {
             override fun onTick(millisUntilFinished: Long) {
                 timeLeftSeconds = (millisUntilFinished / 1000).toInt()
+                PomodoroState.updateTime(timeLeftSeconds)
                 val m = timeLeftSeconds / 60
                 val s = timeLeftSeconds % 60
                 val ts = String.format("%02d:%02d", m, s)
@@ -92,8 +90,8 @@ class PomodoroService : Service() {
             }
 
             override fun onFinish() {
-                isRunningInService = false
-                timeLeftSeconds = 0
+                PomodoroState.setRunning(false)
+                PomodoroState.updateTime(0)
                 val title = if (isWorkMode) "¡Focus Completado!" else "¡Descanso Terminado!"
                 val text = if (isWorkMode) "Buen trabajo. Es hora de un descanso." else "Volvamos a estudiar."
                 
@@ -112,10 +110,11 @@ class PomodoroService : Service() {
 
     private fun pauseTimer() {
         countDownTimer?.cancel()
-        isPaused = true
-        isRunningInService = false
+        PomodoroState.setPaused(true)
+        PomodoroState.setRunning(false)
         
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val timeLeftSeconds = PomodoroState.timeLeftSeconds.value
         val min = timeLeftSeconds / 60
         val sec = timeLeftSeconds % 60
         val timeStr = String.format("%02d:%02d", min, sec)
@@ -125,6 +124,7 @@ class PomodoroService : Service() {
     }
 
     private fun resumeTimer() {
+        val timeLeftSeconds = PomodoroState.timeLeftSeconds.value
         if (timeLeftSeconds > 0) {
             startTimerFromSeconds(timeLeftSeconds)
         }
@@ -132,8 +132,8 @@ class PomodoroService : Service() {
 
     private fun stopTimer() {
         countDownTimer?.cancel()
-        isRunningInService = false
-        isPaused = false
+        PomodoroState.setRunning(false)
+        PomodoroState.setPaused(false)
     }
 
     private fun buildNotification(timeStr: String, title: String = "Modo Focus"): Notification {
@@ -152,7 +152,7 @@ class PomodoroService : Service() {
             .setOngoing(true)
 
         // Actions
-        if (isPaused) {
+        if (PomodoroState.isPaused.value) {
             val resumeIntent = Intent(this, PomodoroService::class.java).apply { action = ACTION_RESUME }
             val resumePending = PendingIntent.getService(this, 1, resumeIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             builder.addAction(android.R.drawable.ic_media_play, "Reanudar", resumePending)
