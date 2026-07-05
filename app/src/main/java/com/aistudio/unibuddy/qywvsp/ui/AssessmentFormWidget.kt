@@ -36,6 +36,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AssessmentFormWidget(
     subject: Subject,
+    totalCurrentPoints: Double,
     onSave: suspend (name: String, grade: Double?, percent: Double, dateStr: String) -> Unit
 ) {
     val context = LocalContext.current
@@ -44,10 +45,10 @@ fun AssessmentFormWidget(
     var examGrade by rememberSaveable { mutableStateOf("") }
     
     // Auto percentage based on type
-    var customPercent by rememberSaveable { mutableStateOf("") }
-    val effectivePercent = customPercent.ifBlank { if (isExamType) "15" else "7" }
-    
-    val dateFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
+        var customPercent by rememberSaveable { mutableStateOf("") }
+        val effectivePercent = customPercent.ifBlank { if (isExamType) "15" else "7" }
+        
+        val dateFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
     var selectedDateStr by rememberSaveable { mutableStateOf(dateFormatter.format(Calendar.getInstance().time)) }
     
     var examNameError by rememberSaveable { mutableStateOf(false) }
@@ -127,6 +128,8 @@ fun AssessmentFormWidget(
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
             )
 
+            var isCompleted by rememberSaveable { mutableStateOf(false) }
+
             Spacer(modifier = Modifier.height(12.dp))
 
             // Date Picker Field
@@ -134,7 +137,7 @@ fun AssessmentFormWidget(
                 value = selectedDateStr,
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Fecha programada") },
+                label = { Text(if (isCompleted) "Fecha de realización" else "Fecha programada") },
                 trailingIcon = {
                     IconButton(
                         onClick = {
@@ -150,31 +153,59 @@ fun AssessmentFormWidget(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Row(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = examGrade,
-                    onValueChange = { 
-                        val filtered = it.filter { char -> char.isDigit() || char == '.' }
-                        if (filtered.count { char -> char == '.' } <= 1) {
-                            examGrade = filtered
-                            examGradeError = examGrade.isNotEmpty() && examGrade.toDoubleOrNull() == null
-                        }
-                    },
-                    label = { Text("Nota (ej: 75.0)") },
-                    placeholder = { Text("Vacío si pendiente") },
-                    isError = examGradeError,
-                    supportingText = { if (examGradeError) Text("Formato inválido", color = Terracotta) },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                androidx.compose.material3.Switch(
+                    checked = isCompleted,
+                    onCheckedChange = { isCompleted = it; if(!it) examGrade = "" },
+                    colors = androidx.compose.material3.SwitchDefaults.colors(checkedThumbColor = DarkGreen, checkedTrackColor = DarkGreen.copy(alpha=0.5f))
                 )
                 Spacer(modifier = Modifier.width(8.dp))
+                Text("Evaluación ya realizada", style = MaterialTheme.typography.bodyMedium, color = SlateGray)
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                if (isCompleted) {
+                    OutlinedTextField(
+                        value = examGrade,
+                        onValueChange = { 
+                            val filtered = it.filter { char -> char.isDigit() || char == '.' }
+                            if (filtered.count { char -> char == '.' } <= 1) {
+                                val percentVal = effectivePercent.toDoubleOrNull() ?: 0.0
+                                val ptsVal = filtered.toDoubleOrNull() ?: 0.0
+                                if (ptsVal <= percentVal) {
+                                    examGrade = filtered
+                                } else {
+                                    // Bloquear que sea mayor al puntaje posible
+                                    examGrade = percentVal.toString()
+                                }
+                                examGradeError = examGrade.isNotEmpty() && examGrade.toDoubleOrNull() == null
+                            }
+                        },
+                        label = { Text("Puntos Obtenidos") },
+                        placeholder = { Text("Ej: 12") },
+                        isError = examGradeError,
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                
                 OutlinedTextField(
                     value = effectivePercent,
-                    onValueChange = { customPercent = it.filter { char -> char.isDigit() } },
-                    label = { Text("Porcentaje (%)") },
-                    modifier = Modifier.weight(1f),
+                    onValueChange = { 
+                        customPercent = it.filter { char -> char.isDigit() }
+                        // Re-validate grade
+                        val percentVal = customPercent.toDoubleOrNull() ?: 0.0
+                        val ptsVal = examGrade.toDoubleOrNull() ?: 0.0
+                        if (ptsVal > percentVal && isCompleted) {
+                            examGrade = percentVal.toString()
+                        }
+                    },
+                    label = { Text("Valor (puntos)") },
+                    placeholder = { Text(if(isExamType) "Ej: 15" else "Ej: 7") },
+                    modifier = Modifier.weight(if(isCompleted) 1f else 2f),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
@@ -184,9 +215,22 @@ fun AssessmentFormWidget(
             Spacer(modifier = Modifier.height(16.dp))
 
             val hapticFeedback = LocalHapticFeedback.current
+            
+            val potentialNewTotal = totalCurrentPoints + (effectivePercent.toDoubleOrNull() ?: 0.0)
+            val isExceedingTotal = potentialNewTotal > 100.0
+            
+            if (isExceedingTotal) {
+                Text(
+                    text = "¡Alerta! La suma de todas las evaluaciones no puede exceder los 100 puntos. (Actual: $totalCurrentPoints, Nuevo Total: $potentialNewTotal)",
+                    color = Terracotta,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
             Button(
                 onClick = {
-                    if (isSaving) return@Button
+                    if (isSaving || isExceedingTotal) return@Button
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                     examNameError = examName.isBlank()
                     examGradeError = examGrade.isNotEmpty() && examGrade.toDoubleOrNull() == null
@@ -195,10 +239,11 @@ fun AssessmentFormWidget(
                         isSaving = true
                         coroutineScope.launch {
                             try {
-                                val percentVal = effectivePercent.toDoubleOrNull() ?: if (isExamType) 15.0 else 7.0
-                                val gradeVal = examGrade.toDoubleOrNull()
+                                val maxPoints = effectivePercent.toDoubleOrNull() ?: if (isExamType) 15.0 else 7.0
+                                val obtainedPoints = examGrade.toDoubleOrNull()
+                                
                                 val finalName = if (isExamType) "Examen: $examName" else "Trabajo: $examName"
-                                onSave(finalName, gradeVal, percentVal, selectedDateStr)
+                                onSave(finalName, obtainedPoints, maxPoints, selectedDateStr)
                                 
                                 // Reset state
                                 examName = ""

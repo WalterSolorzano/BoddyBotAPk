@@ -9,14 +9,16 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.CountDownTimer
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.aistudio.unibuddy.qywvsp.R
+import kotlinx.coroutines.*
 
 class PomodoroService : Service() {
 
-    private var countDownTimer: CountDownTimer? = null
+    private var targetTimeMillis = 0L
+    private var timerJob: Job? = null
+    private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var isWorkMode = true
 
     companion object {
@@ -61,55 +63,80 @@ class PomodoroService : Service() {
     }
 
     private fun startTimerFromSeconds(seconds: Int) {
-        countDownTimer?.cancel()
+        timerJob?.cancel()
         PomodoroState.setRunning(true)
         PomodoroState.setWorkMode(isWorkMode)
         PomodoroState.setPaused(false)
         
-        val totalMillis = seconds * 1000L
+        targetTimeMillis = System.currentTimeMillis() + (seconds * 1000L)
         
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
-        var timeLeftSeconds = seconds
-        val min = timeLeftSeconds / 60
-        val sec = timeLeftSeconds % 60
+        val min = seconds / 60
+        val sec = seconds % 60
         val timeStr = String.format("%02d:%02d", min, sec)
-        startForeground(NOTIFICATION_ID, buildNotification(timeStr, "Iniciando..."))
+        
+        // Start foreground with proper special use foreground type
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID, 
+                buildNotification(timeStr, "Iniciando..."),
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                } else {
+                    0
+                }
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification(timeStr, "Iniciando..."))
+        }
 
-        countDownTimer = object : CountDownTimer(totalMillis, 1000) {
-            override fun onTick(millisUntilFinished: Long) {
-                timeLeftSeconds = (millisUntilFinished / 1000).toInt()
-                PomodoroState.updateTime(timeLeftSeconds)
-                val m = timeLeftSeconds / 60
-                val s = timeLeftSeconds % 60
-                val ts = String.format("%02d:%02d", m, s)
+        timerJob = serviceScope.launch {
+            while (isActive) {
+                val currentTime = System.currentTimeMillis()
+                val remainingMillis = targetTimeMillis - currentTime
+                if (remainingMillis <= 0) {
+                    withContext(Dispatchers.Main) {
+                        onTimerFinished()
+                    }
+                    break
+                }
                 
-                val title = if (isWorkMode) "Modo Focus: ¡A estudiar!" else "Modo Focus: Descanso"
+                val remainingSeconds = (remainingMillis / 1000L).toInt()
+                withContext(Dispatchers.Main) {
+                    PomodoroState.updateTime(remainingSeconds)
+                    val m = remainingSeconds / 60
+                    val s = remainingSeconds % 60
+                    val ts = String.format("%02d:%02d", m, s)
+                    val title = if (isWorkMode) "Modo Focus: ¡A estudiar!" else "Modo Focus: Descanso"
+                    notificationManager.notify(NOTIFICATION_ID, buildNotification(ts, title))
+                }
                 
-                notificationManager.notify(NOTIFICATION_ID, buildNotification(ts, title))
+                delay(500)
             }
+        }
+    }
 
-            override fun onFinish() {
-                PomodoroState.setRunning(false)
-                PomodoroState.updateTime(0)
-                val title = if (isWorkMode) "¡Focus Completado!" else "¡Descanso Terminado!"
-                val text = if (isWorkMode) "Buen trabajo. Es hora de un descanso." else "Volvamos a estudiar."
-                
-                val notification = androidx.core.app.NotificationCompat.Builder(this@PomodoroService, CHANNEL_ID)
-                    .setContentTitle(title)
-                    .setContentText(text)
-                    .setSmallIcon(com.aistudio.unibuddy.qywvsp.R.drawable.ic_launcher_foreground)
-                    .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
-                    .build()
-                
-                notificationManager.notify(NOTIFICATION_ID + 1, notification)
-                stopSelf()
-            }
-        }.start()
+    private fun onTimerFinished() {
+        PomodoroState.setRunning(false)
+        PomodoroState.updateTime(0)
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val title = if (isWorkMode) "¡Focus Completado!" else "¡Descanso Terminado!"
+        val text = if (isWorkMode) "Buen trabajo. Es hora de un descanso." else "Volvamos a estudiar."
+        
+        val notification = androidx.core.app.NotificationCompat.Builder(this@PomodoroService, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(com.aistudio.unibuddy.qywvsp.R.drawable.ic_launcher_foreground)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .build()
+        
+        notificationManager.notify(NOTIFICATION_ID + 1, notification)
+        stopSelf()
     }
 
     private fun pauseTimer() {
-        countDownTimer?.cancel()
+        timerJob?.cancel()
         PomodoroState.setPaused(true)
         PomodoroState.setRunning(false)
         
@@ -131,7 +158,7 @@ class PomodoroService : Service() {
     }
 
     private fun stopTimer() {
-        countDownTimer?.cancel()
+        timerJob?.cancel()
         PomodoroState.setRunning(false)
         PomodoroState.setPaused(false)
     }
@@ -186,5 +213,6 @@ class PomodoroService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopTimer()
+        serviceScope.cancel()
     }
 }

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -93,7 +94,7 @@ fun GPSAndStopwatchWidget(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = String.format(Locale.US, "%.2f km", currentDistanceToCollege ?: 0.0),
+                        text = if (currentDistanceToCollege == null) "-- km" else String.format(Locale.US, "%.2f km", currentDistanceToCollege),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Black,
                         color = NavyBlue
@@ -111,32 +112,36 @@ fun GPSAndStopwatchWidget(
                         text = "$locationBasedTravelMinutes min",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Black,
-                        color = DarkGreen
+                        color = if (currentDistanceToCollege != null && currentDistanceToCollege > 100.0) Terracotta else DarkGreen
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            val isTooFar = currentDistanceToCollege != null && currentDistanceToCollege > 100.0
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        if (delayMinutes > 5) Terracotta.copy(alpha = 0.08f) else MintGreen.copy(alpha = 0.08f),
+                        if (isTooFar || delayMinutes > 5) Terracotta.copy(alpha = 0.08f) else MintGreen.copy(alpha = 0.08f),
                         RoundedCornerShape(12.dp)
                     )
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = if (delayMinutes > 5) Icons.Default.Warning else Icons.Default.Info,
+                    imageVector = if (isTooFar || delayMinutes > 5) Icons.Default.Warning else Icons.Default.Info,
                     contentDescription = null,
-                    tint = if (delayMinutes > 5) Terracotta else DarkGreen,
+                    tint = if (isTooFar || delayMinutes > 5) Terracotta else DarkGreen,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (delayMinutes > 5) {
+                    text = if (isTooFar) {
+                        "Atención: Estás demasiado lejos de la universidad (a ${String.format(Locale.US, "%.1f", currentDistanceToCollege)} km). El cálculo de trayecto es inusualmente largo."
+                    } else if (delayMinutes > 5) {
                         "¡Viajarás +$delayMinutes min respecto a tu promedio diario ($baseTravelTimeSource min)."
                     } else if (delayMinutes < -2) {
                         val absDiff = -delayMinutes
@@ -145,7 +150,7 @@ fun GPSAndStopwatchWidget(
                         "Viaje dentro del promedio habitual ($baseTravelTimeSource min)."
                     },
                     fontSize = 12.sp,
-                    color = if (delayMinutes > 5) Color(0xFF7A1C1C) else Color(0xFF1E4E2C),
+                    color = if (isTooFar || delayMinutes > 5) Color(0xFF7A1C1C) else Color(0xFF1E4E2C),
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -167,7 +172,7 @@ fun GPSAndStopwatchWidget(
                 shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp)
             ) {
-                Icon(androidx.compose.material.icons.Icons.Default.Security, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Compartir Estado (Viaje Seguro)", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }

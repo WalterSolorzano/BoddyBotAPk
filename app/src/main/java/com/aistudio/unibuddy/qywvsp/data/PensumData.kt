@@ -79,4 +79,68 @@ object CurriculumData {
 
         StaticPensumSubject(10, "FRM-11082", "FORMAS DE CULMINACION DE ESTUDIOS", listOf())
     )
+
+    fun getSubjectsFor(university: String, career: String): List<StaticPensumSubject> {
+        if (university == "UNI" && career == "Ing. Industrial") {
+            return industrialEngineering
+        }
+        // Generate a customized curriculum for the selected university and career
+        val list = mutableListOf<StaticPensumSubject>()
+        val careerPrefix = when (career) {
+            "Ing. de Sistemas" -> "SIS"
+            "Ing. Civil" -> "CIV"
+            "Ing. Industrial" -> "IND"
+            "Ing. Química" -> "QMC"
+            "Arquitectura" -> "ARQ"
+            "Medicina" -> "MED"
+            "Derecho" -> "DER"
+            "Psicología" -> "PSI"
+            "Administración" -> "ADM"
+            "Diseño Gráfico" -> "DSG"
+            "Comunicación" -> "COM"
+            "Odontología" -> "ODO"
+            "Relaciones Internacionales" -> "RRI"
+            "Business Administration" -> "BUS"
+            "Software Engineering" -> "SEN"
+            "Management Info Systems" -> "MIS"
+            "Cybersecurity" -> "CYB"
+            "Medicina Veterinaria" -> "VET"
+            "Contaduría" -> "CON"
+            else -> "GEN"
+        }
+        
+        val subjectNames = mapOf(
+            "SIS" to listOf("Matemática I", "Programación I", "Introducción a Sistemas", "Física General", "Inglés Técnico", "Cálculo", "Estructuras de Datos", "Base de Datos I", "Análisis de Sistemas", "Redes de Computadoras", "Sistemas Operativos", "Ingeniería de Software", "Base de Datos II", "Desarrollo Web", "Seguridad Informática", "Administración de Proyectos", "Inteligencia Artificial", "Proyecto de Fin de Carrera"),
+            "CIV" to listOf("Matemática I", "Dibujo Técnico", "Introducción a Ingeniería Civil", "Física General", "Geometría Descriptiva", "Cálculo", "Topografía I", "Mecánica de Sólidos", "Hidráulica", "Materiales de Construcción", "Análisis Estructural I", "Geotecnia", "Diseño de Concreto I", "Ingeniería Ambiental", "Planificación de Obras", "Diseño Sismorresistente", "Formulación de Proyectos Civil", "Proyecto de Graduación"),
+            "IND" to listOf("Geometría Descriptiva", "Inglés I", "Introducción a Ingeniería Industrial", "Matemática I", "Computación Básica", "Física I", "Química General", "Estadística I", "Estudio del Trabajo I", "Procesos de Manufactura", "Investigación de Operaciones I", "Ergonomía y Seguridad", "Control de Calidad", "Planificación de Producción", "Ingeniería Económica", "Formulación de Proyectos", "Administración de Proyectos", "Proyecto Final"),
+            "QMC" to listOf("Química General I", "Matemática I", "Física I", "Introducción a Ing. Química", "Química Orgánica I", "Cálculo I", "Química Analítica", "Termodinámica I", "Fisicoquímica", "Transferencia de Calor", "Operaciones Unitarias I", "Cinética Química", "Diseño de Reactores", "Control de Procesos", "Seguridad Industrial", "Diseño de Plantas", "Proyectos Químicos", "Trabajo de Grado"),
+            "ARQ" to listOf("Diseño Arquitectónico I", "Geometría Descriptiva", "Historia de la Arquitectura", "Expresión Gráfica", "Diseño Arquitectónico II", "Teoría del Espacio", "Sistemas Estructurales I", "Materiales de Construcción", "Diseño Urbano", "Instalaciones en Edificaciones", "Arquitectura Sostenible", "Presupuestos y Costos", "Portafolio de Diseño", "Proyecto de Tesis"),
+            "MED" to listOf("Anatomía Humana", "Biología Celular", "Histología", "Bioquímica Médica", "Fisiología I", "Embriología", "Microbiología", "Fisiopatología", "Farmacología", "Semiología Médica", "Medicina Interna I", "Cirugía General", "Pediatría", "Ginecología y Obstetricia", "Salud Pública", "Ética Médica", "Internado Rotatorio"),
+            "DER" to listOf("Introducción al Derecho", "Derecho Romano", "Derecho Civil I", "Derecho Constitucional", "Derecho Penal I", "Derecho Civil II", "Derecho Penal II", "Derecho Procesal I", "Derecho Laboral", "Derecho Mercantil I", "Derecho Internacional", "Filosofía del Derecho", "Técnicas de Litigación", "Derecho Notarial", "Prácticas Forenses", "Tesis de Grado"),
+            "PSI" to listOf("Introducción a la Psicología", "Neuroanatomía", "Psicología del Desarrollo I", "Teorías de la Personalidad", "Psicopatología I", "Métodos de Investigación", "Psicología Social", "Evaluación Psicológica", "Psicología Clínica", "Psicología Educativa", "Psicofarmacología", "Terapia Cognitivo Conductual", "Psicología Organizacional", "Ética Profesional", "Prácticas Clínicas"),
+            "ADM" to listOf("Principios de Administración", "Contabilidad I", "Microeconomía", "Matemática Financiera", "Macroeconomía", "Contabilidad de Costos", "Administración Financiera", "Mercadotecnia I", "Comportamiento Organizacional", "Investigación de Mercados", "Gestión del Talento Humano", "Administración Estratégica", "Formulación de Proyectos", "Auditoría Administrativa", "Creación de Empresas"),
+            "DSG" to listOf("Fundamentos del Diseño", "Historia del Arte", "Dibujo Artístico", "Fotografía Digital", "Tipografía", "Ilustración Vectorial", "Diseño de Identidad", "Edición de Imagen", "Diseño Editorial", "Diseño de Empaques", "Animación 2D", "Diseño Web", "Diseño de Campañas", "Portafolio Profesional"),
+            "COM" to listOf("Introducción a la Comunicación", "Redacción Periodística", "Teorías de la Comunicación", "Fotoperiodismo", "Comunicación Audiovisual", "Radio y Locución", "Periodismo Digital", "Relaciones Públicas", "Producción de Televisión", "Comunicación Organizacional", "Opinión Pública", "Campañas de Comunicación", "Seminario de Tesis")
+        )
+        
+        val names = subjectNames[careerPrefix] ?: listOf("Introducción a la Especialidad", "Matemática Aplicada", "Metodología de Estudio", "Inglés Técnico", "Computación", "Seminario de Formación", "Prácticas Profesionales", "Formulación de Proyectos", "Examen de Grado")
+        
+        var nameIdx = 0
+        for (sem in 1..10) {
+            val numSubjects = if (sem == 10) 1 else 4
+            for (i in 1..numSubjects) {
+                val subjectName = if (nameIdx < names.size) names[nameIdx] else "Materia Electiva $i"
+                nameIdx++
+                list.add(
+                    StaticPensumSubject(
+                        semester = sem,
+                        code = "${careerPrefix}${sem}0${i}",
+                        name = subjectName.uppercase(),
+                        prereqs = emptyList()
+                    )
+                )
+            }
+        }
+        return list
+    }
 }

@@ -16,6 +16,7 @@ import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
+import androidx.glance.appwidget.cornerRadius
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
@@ -60,24 +61,48 @@ class GradesWidget : GlanceAppWidget() {
             Column(
                 modifier = GlanceModifier
                     .fillMaxSize()
-                    .background(Color(0xFF0F172A))
-                    .padding(16.dp)
+                    .background(Color(0xFF0F172A)) // Sleek premium dark background
+                    .cornerRadius(16.dp) // Beautiful rounded corners for the widget
+                    .padding(14.dp)
             ) {
+                Row(
+                    modifier = GlanceModifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Calificaciones",
+                        style = TextStyle(
+                            color = ColorProvider(Color.White),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+
                 Text(
-                    text = "Panel de Notas",
+                    text = "Promedios Ponderados de Materias",
                     style = TextStyle(
-                        color = ColorProvider(Color.White),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
+                        color = ColorProvider(Color(0xFF94A3B8)), // Soft slate gray
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
                     ),
-                    modifier = GlanceModifier.padding(bottom = 12.dp)
+                    modifier = GlanceModifier.padding(bottom = 8.dp)
                 )
 
                 if (summaryList.isEmpty()) {
-                    Text(
-                        text = "No hay materias registradas",
-                        style = TextStyle(color = ColorProvider(Color.LightGray))
-                    )
+                    Box(
+                        modifier = GlanceModifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No hay materias registradas",
+                            style = TextStyle(
+                                color = ColorProvider(Color(0xFF64748B)),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                    }
                 } else {
                     LazyColumn {
                         items(summaryList) { summary ->
@@ -98,13 +123,14 @@ data class SubjectSummary(
 
 @androidx.compose.runtime.Composable
 fun SubjectRow(summary: SubjectSummary) {
-    // We launch MainActivity, ideally we would want to pass the subjectId
-    // But since we are creating an intent we can do it via actionStartActivity
     val progressColor = if (summary.weightedGrade >= 51.0) Color(0xFF10B981) else if (summary.weightedGrade >= 30.0) Color(0xFFF59E0B) else Color(0xFFEF4444)
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = 4.dp)
+            .background(Color(0xFF1E293B)) // Premium Card background container
+            .cornerRadius(12.dp) // Beautiful rounded corners for each subject card
+            .padding(10.dp)
             .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -113,26 +139,40 @@ fun SubjectRow(summary: SubjectSummary) {
                 text = summary.name,
                 style = TextStyle(
                     color = ColorProvider(Color.White),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
                 )
             )
-            Spacer(modifier = GlanceModifier.height(4.dp))
+            Spacer(modifier = GlanceModifier.height(6.dp))
             androidx.glance.appwidget.LinearProgressIndicator(
                 progress = (summary.weightedGrade / 100.0).toFloat().coerceIn(0f, 1f),
-                modifier = GlanceModifier.fillMaxWidth().height(6.dp),
+                modifier = GlanceModifier.fillMaxWidth().height(6.dp).cornerRadius(3.dp),
                 color = ColorProvider(progressColor),
                 backgroundColor = ColorProvider(Color(0xFF334155))
             )
         }
         Spacer(modifier = GlanceModifier.width(12.dp))
-        Text(
-            text = "${(summary.weightedGrade * 10).roundToInt() / 10.0}",
-            style = TextStyle(
-                color = ColorProvider(progressColor),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${(summary.weightedGrade * 10).roundToInt() / 10.0}",
+                style = TextStyle(
+                    color = ColorProvider(progressColor),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
             )
-        )
+            Text(
+                text = if (summary.weightedGrade >= 51.0) "Aprobado" else "En riesgo",
+                style = TextStyle(
+                    color = ColorProvider(if (summary.weightedGrade >= 51.0) Color(0xFF34D399) else Color(0xFFF87171)),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                modifier = GlanceModifier.padding(top = 1.dp)
+            )
+        }
     }
 }

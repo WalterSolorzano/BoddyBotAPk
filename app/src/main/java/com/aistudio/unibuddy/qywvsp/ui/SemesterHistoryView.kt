@@ -37,7 +37,7 @@ import com.aistudio.unibuddy.qywvsp.data.TripRecord
 import com.aistudio.unibuddy.qywvsp.ui.theme.*
 
 @Composable
-fun SemesterHistoryView(viewModel: UniBuddyViewModel) {
+fun SemesterHistoryView(viewModel: UniBuddyViewModel, onBack: (() -> Unit)? = null) {
     val context = LocalContext.current
     val subjects by viewModel.subjects.collectAsStateWithLifecycle()
     val attendanceLogs by viewModel.attendanceLogs.collectAsStateWithLifecycle()
@@ -74,6 +74,18 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel) {
             .padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        if (onBack != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { onBack() }) {
+                    Icon(androidx.compose.material.icons.Icons.Default.ArrowBack, contentDescription = "Back", tint = NavyBlue)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Estadísticas del Semestre", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = NavyBlue)
+            }
+        }
         // Stats Cards Bento Grid
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -293,7 +305,9 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel) {
         // Grade Goals Calculator / GPA Predictor Card
         val pendingExamsCount = remember(assessments) { assessments.count { it.grade == null } }
         if (pendingExamsCount > 0) {
-            var targetGpa by remember { mutableFloatStateOf(75.0f) }
+            val university by viewModel.userUniversity.collectAsStateWithLifecycle()
+            val passingGrade = if (university == "UAM" || university == "UCA" || university == "Keiser") 70.0f else 60.0f
+            var targetGpa by remember(passingGrade) { mutableFloatStateOf(maxOf(75.0f, passingGrade)) }
             val requiredGrade = remember(targetGpa, gradedAssessments, pendingExamsCount) {
                 val totalCount = gradedAssessments.size + pendingExamsCount
                 val currentSum = gradedAssessments.sumOf { it.grade ?: 0.0 }
@@ -342,8 +356,8 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel) {
                     Slider(
                         value = targetGpa,
                         onValueChange = { targetGpa = it },
-                        valueRange = 51.0f..100.0f,
-                        steps = 49,
+                        valueRange = passingGrade..100.0f,
+                        steps = (100f - passingGrade).toInt() - 1,
                         colors = SliderDefaults.colors(
                             thumbColor = ProBlue,
                             activeTrackColor = ProBlue,
@@ -355,8 +369,8 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel) {
 
                     Surface(
                         color = when {
-                            requiredGrade <= 51.0 -> Color(0xFFE8F5E9)
-                            requiredGrade <= 75.0 -> Color(0xFFE3F2FD)
+                            requiredGrade <= passingGrade -> Color(0xFFE8F5E9)
+                            requiredGrade <= (passingGrade + 15f) -> Color(0xFFE3F2FD)
                             requiredGrade <= 100.0 -> Color(0xFFFFF3E0)
                             else -> Color(0xFFFFEBEE)
                         },
@@ -377,8 +391,8 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel) {
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = when {
-                                    requiredGrade <= 51.0 -> "¡Muy fácil! Ya casi tienes asegurada la meta."
-                                    requiredGrade <= 75.0 -> "¡Totalmente alcanzable! Un repaso regular bastará."
+                                    requiredGrade <= passingGrade -> "¡Muy fácil! Ya casi tienes asegurada la meta."
+                                    requiredGrade <= (passingGrade + 15f) -> "¡Totalmente alcanzable! Un repaso regular bastará."
                                     requiredGrade <= 100.0 -> "¡Requerirá esfuerzo! Necesitas excelentes notas en tus exámenes."
                                     else -> "Prácticamente imposible con tu promedio actual. Baja un poco tu meta."
                                 },
@@ -518,6 +532,8 @@ private fun generateTripsCsv(trips: List<TripRecord>): String {
 @Composable
 fun AdvancedAcademicStatistics(viewModel: UniBuddyViewModel) {
     val history by viewModel.academicHistory.collectAsStateWithLifecycle()
+    val university by viewModel.userUniversity.collectAsStateWithLifecycle()
+    val passingGrade = if (university == "UAM" || university == "UCA" || university == "Keiser") 70.0 else 60.0
 
     if (history.isEmpty()) {
         EmptyHistoryPlaceholder("No hay historial académico oficial. Ve a Configuración y presiona 'Importar PDF'.")
@@ -528,7 +544,7 @@ fun AdvancedAcademicStatistics(viewModel: UniBuddyViewModel) {
     val validGrades = history.filter { it.record.grade > 0.0 }
     val averageGrade = if (validGrades.isNotEmpty()) validGrades.map { it.record.grade }.average() else 0.0
     val totalSubjects = history.size
-    val passedSubjects = history.count { it.record.status.name == "NF_R" }
+    val passedSubjects = history.count { it.record.grade >= passingGrade }
     val survivalRate = if (totalSubjects > 0) (passedSubjects.toFloat() / totalSubjects.toFloat() * 100f).toInt() else 0
 
     Column(
@@ -563,9 +579,31 @@ fun AdvancedAcademicStatistics(viewModel: UniBuddyViewModel) {
         }
 
         // Gráfico simple de promedios por semestre
-        val semesterAverages = validGrades.groupBy { it.semester }.mapValues { (_, records) ->
-            records.map { it.record.grade }.average()
-        }.toList().sortedBy { it.first }
+        val semesterAverages = remember(validGrades) {
+            validGrades.groupBy { it.semester }.mapValues { (_, records) ->
+                records.map { it.record.grade }.average()
+            }.toList().sortedBy { (semesterName, _) ->
+                val yearRegex = Regex("""\d{4}""")
+                val yearMatch = yearRegex.find(semesterName)
+                val year = yearMatch?.value?.toIntOrNull() ?: 0
+                
+                val termOrder = when {
+                    semesterName.contains("1er", ignoreCase = true) -> 1
+                    semesterName.contains("Verano", ignoreCase = true) -> 2
+                    semesterName.contains("2do", ignoreCase = true) -> 3
+                    semesterName.contains("3er", ignoreCase = true) -> 4
+                    semesterName.contains("4to", ignoreCase = true) -> 5
+                    semesterName.contains("5to", ignoreCase = true) -> 6
+                    semesterName.contains("6to", ignoreCase = true) -> 7
+                    semesterName.contains("7mo", ignoreCase = true) -> 8
+                    semesterName.contains("8vo", ignoreCase = true) -> 9
+                    semesterName.contains("9no", ignoreCase = true) -> 10
+                    semesterName.contains("10mo", ignoreCase = true) -> 11
+                    else -> 12
+                }
+                year * 100 + termOrder
+            }
+        }
 
         if (semesterAverages.isNotEmpty()) {
             Card(
@@ -591,12 +629,12 @@ fun AdvancedAcademicStatistics(viewModel: UniBuddyViewModel) {
                             ) {
                                 Text(String.format("%.1f", avg), fontSize = 9.sp, color = SlateGray, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Box(
+                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth(0.6f)
                                         .fillMaxHeight(barHeightWeight)
                                         .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-                                        .background(if (avg >= 60) ProBlue else Color(0xFFEF5350))
+                                        .background(if (avg >= passingGrade) ProBlue else Color(0xFFEF5350))
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(semester.take(3), fontSize = 9.sp, color = NavyBlue, fontWeight = FontWeight.Bold)
@@ -607,26 +645,70 @@ fun AdvancedAcademicStatistics(viewModel: UniBuddyViewModel) {
             }
         }
 
-        // List of records
-        Text("Desglose Histórico", fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            history.forEach { record ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.White, RoundedCornerShape(12.dp))
-                        .border(1.dp, Color.LightGray.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+        // List of records grouped by semester
+        Text("Desglose Histórico por Semestre", fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
+        val groupedBySemester = remember(history) {
+            history.groupBy { it.semester }.toList().sortedBy { (semesterName, _) ->
+                val yearRegex = Regex("""\d{4}""")
+                val yearMatch = yearRegex.find(semesterName)
+                val year = yearMatch?.value?.toIntOrNull() ?: 0
+                
+                val termOrder = when {
+                    semesterName.contains("1er", ignoreCase = true) -> 1
+                    semesterName.contains("Verano", ignoreCase = true) -> 2
+                    semesterName.contains("2do", ignoreCase = true) -> 3
+                    semesterName.contains("3er", ignoreCase = true) -> 4
+                    semesterName.contains("4to", ignoreCase = true) -> 5
+                    semesterName.contains("5to", ignoreCase = true) -> 6
+                    semesterName.contains("6to", ignoreCase = true) -> 7
+                    semesterName.contains("7mo", ignoreCase = true) -> 8
+                    semesterName.contains("8vo", ignoreCase = true) -> 9
+                    semesterName.contains("9no", ignoreCase = true) -> 10
+                    semesterName.contains("10mo", ignoreCase = true) -> 11
+                    else -> 12
+                }
+                year * 100 + termOrder
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            groupedBySemester.forEach { (semester, records) ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(12.dp)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)), // Slate 50
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(record.subjectName, fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 12.sp)
-                        Text("${record.record.academicGroup} | Semestre: ${record.semester} | Cred: ${record.credits}", fontSize = 10.sp, color = SlateGray)
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(String.format("%.1f", record.record.grade), fontWeight = FontWeight.Black, color = if (record.record.grade >= 60) DarkGreen else Color.Red, fontSize = 14.sp)
-                        Text(record.record.status.name, fontSize = 9.sp, color = SlateGray, fontWeight = FontWeight.Bold)
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(semester, fontWeight = FontWeight.Black, color = ProBlue, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            records.forEach { record ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.White, RoundedCornerShape(8.dp))
+                                        .border(1.dp, Color.LightGray.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                        .padding(8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(record.subjectName, fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 11.sp)
+                                        Text("${record.record.academicGroup} | Cred: ${record.credits}", fontSize = 10.sp, color = SlateGray)
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(String.format("%.1f", record.record.grade), fontWeight = FontWeight.Black, color = if (record.record.grade >= passingGrade) DarkGreen else Color.Red, fontSize = 12.sp)
+                                        val statusLabel = when (record.record.status) {
+                                            com.aistudio.unibuddy.qywvsp.data.AssessmentStatus.NF_R -> "Ordinaria (Regular)"
+                                            com.aistudio.unibuddy.qywvsp.data.AssessmentStatus.IC_R -> "Convocatoria I"
+                                            com.aistudio.unibuddy.qywvsp.data.AssessmentStatus.IIC_R -> "Convocatoria II"
+                                            com.aistudio.unibuddy.qywvsp.data.AssessmentStatus.NF_CV -> "Curso de Verano"
+                                            else -> "Otros"
+                                        }
+                                        Text(statusLabel, fontSize = 9.sp, color = SlateGray, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

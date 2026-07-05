@@ -37,6 +37,12 @@
         </activity>
         
         <service
+            android:name="com.aistudio.unibuddy.qywvsp.LiveCountdownService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Live class countdown timer" />
+        </service>
+        <service
             android:name="com.aistudio.unibuddy.qywvsp.ui.PomodoroService"
             android:foregroundServiceType="specialUse"
             android:exported="false">
@@ -75,6 +81,61 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/grades_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ui.widget.RPGProgressWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/rpg_progress_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ui.widget.NextClassHeroWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/next_class_hero_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ui.widget.StreakTrackerWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/streak_tracker_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ui.widget.UpcomingAssessmentsWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/upcoming_assessments_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ui.widget.QuickCommuteWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_commute_widget_info" />
         </receiver>
     </application>
 

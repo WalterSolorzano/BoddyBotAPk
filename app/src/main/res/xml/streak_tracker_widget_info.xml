@@ -7,5 +7,5 @@
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:resizeMode="horizontal|vertical"
-    android:previewImage="@drawable/buddy_widget_soleado"
+    android:previewImage="@drawable/ic_widget_flame"
     android:widgetCategory="home_screen" />

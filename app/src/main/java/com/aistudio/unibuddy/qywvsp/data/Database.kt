@@ -11,7 +11,16 @@ import com.squareup.moshi.Types
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
-data class ClassSessionDetails(val day: String, val time: String, val room: String)
+data class ClassSessionDetails(
+    val day: String,
+    val time: String,
+    val room: String,
+    val frequency: String? = "Todas las semanas", // "Todas las semanas", "Semanas Pares", "Semanas Impares"
+    val cancelledDates: List<String>? = emptyList()
+) {
+    val safeFrequency: String get() = frequency ?: "Todas las semanas"
+    val safeCancelledDates: List<String> get() = cancelledDates ?: emptyList()
+}
 
 fun String.parseSessions(): List<ClassSessionDetails> {
     val list = mutableListOf<ClassSessionDetails>()
@@ -30,7 +39,15 @@ fun String.parseSessions(): List<ClassSessionDetails> {
                 "T3" -> "18:00 - 20:00"
                 else -> timeCode
             }
-            list.add(ClassSessionDetails(obj.getString("day"), readableTime, obj.optString("room", "Aula sin definir")))
+            val freq = obj.optString("frequency", "Todas las semanas")
+            val cancelArray = obj.optJSONArray("cancelledDates")
+            val cancelledList = mutableListOf<String>()
+            if (cancelArray != null) {
+                for (j in 0 until cancelArray.length()) {
+                    cancelledList.add(cancelArray.getString(j))
+                }
+            }
+            list.add(ClassSessionDetails(obj.getString("day"), readableTime, obj.optString("room", "Aula sin definir"), freq, cancelledList))
         }
     } catch (e: Exception) { e.printStackTrace() }
     return list
@@ -43,6 +60,10 @@ fun List<ClassSessionDetails>.toJsonString(): String {
         obj.put("day", s.day)
         obj.put("time", s.time)
         obj.put("room", s.room)
+        obj.put("frequency", s.safeFrequency)
+        val cancelArr = JSONArray()
+        s.safeCancelledDates.forEach { cancelArr.put(it) }
+        obj.put("cancelledDates", cancelArr)
         arr.put(obj)
     }
     return arr.toString()
@@ -197,7 +218,45 @@ data class AttendanceLog(
     val isPresent: Boolean // true = Presente, false = Ausente/Falta
 )
 
+@Entity(
+    tableName = "tasks",
+    foreignKeys = [
+        ForeignKey(
+            entity = Subject::class,
+            parentColumns = ["id"],
+            childColumns = ["subjectId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("subjectId")]
+)
+data class Task(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val subjectId: Int,
+    val title: String,
+    val type: String, // "Tarea", "Laboratorio", "Proyecto", "Examen"
+    val dueDate: String, // e.g., "28 Jun"
+    val isCompleted: Boolean = false
+)
+
 // DAOs
+@Dao
+interface TaskDao {
+    @Query("SELECT * FROM tasks ORDER BY id ASC")
+    fun getAllTasks(): Flow<List<Task>>
+
+    @Query("SELECT * FROM tasks WHERE subjectId = :subjectId ORDER BY id ASC")
+    fun getTasksForSubject(subjectId: Int): Flow<List<Task>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTask(task: Task): Long
+
+    @Update
+    suspend fun updateTask(task: Task)
+
+    @Query("DELETE FROM tasks WHERE id = :id")
+    suspend fun deleteTaskById(id: Int)
+}
 @Dao
 interface BadgeDao {
     @Query("SELECT * FROM badges ORDER BY category ASC")
@@ -254,7 +313,9 @@ interface AcademicRecordDao {
     fun getAllRecords(): Flow<List<AcademicRecord>>
 
     @Query("""
-        SELECT ar.*, ps.name as name, ps.semester as semester, ps.credits as credits, ps.isNumbers as isNumbers 
+        SELECT ar.*, ps.name as name, 
+               (CASE WHEN ar.year IS NOT NULL AND ar.year != '' AND ar.year != 'S/D' THEN ar.year ELSE ps.semester END) as semester, 
+               ps.credits as credits, ps.isNumbers as isNumbers 
         FROM academic_records ar 
         INNER JOIN pensum_subjects ps ON ar.pensumSubjectId = ps.id
     """)
@@ -346,7 +407,23 @@ class Converters {
 
     @TypeConverter
     fun fromString(value: String): List<ClassSessionDetails> {
-        return adapter.fromJson(value) ?: emptyList()
+        val parsed = adapter.fromJson(value) ?: emptyList()
+        return parsed.map { session ->
+            val mappedTime = when (session.time) {
+                "M1" -> "08:00 - 10:00"
+                "M2" -> "10:00 - 12:00"
+                "M3" -> "12:00 - 14:00"
+                "T1" -> "14:00 - 16:00"
+                "T2" -> "16:00 - 18:00"
+                "T3" -> "18:00 - 20:00"
+                else -> session.time
+            }
+            if (mappedTime != session.time) {
+                session.copy(time = mappedTime)
+            } else {
+                session
+            }
+        }
     }
 
     @TypeConverter
@@ -377,9 +454,10 @@ class Converters {
         Badge::class,
         Career::class,
         PensumSubject::class,
-        AcademicRecord::class
+        AcademicRecord::class,
+        Task::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -394,6 +472,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun settingDao(): SettingDao
     abstract fun attendanceLogDao(): AttendanceLogDao
     abstract fun badgeDao(): BadgeDao
+    abstract fun taskDao(): TaskDao
 
     companion object {
         @Volatile
@@ -502,6 +581,12 @@ class UniBuddyRepository(private val db: AppDatabase) {
     val attendanceLogs: Flow<List<AttendanceLog>> = db.attendanceLogDao().getAllLogs()
     val assessments: Flow<List<Assessment>> = db.assessmentDao().getAllAssessments()
     val badges: Flow<List<Badge>> = db.badgeDao().getAllBadges()
+    val tasks: Flow<List<Task>> = db.taskDao().getAllTasks()
+
+    fun getTasksForSubject(subjectId: Int): Flow<List<Task>> = db.taskDao().getTasksForSubject(subjectId)
+    suspend fun insertTask(task: Task): Long = db.taskDao().insertTask(task)
+    suspend fun updateTask(task: Task) = db.taskDao().updateTask(task)
+    suspend fun deleteTaskById(id: Int) = db.taskDao().deleteTaskById(id)
 
     suspend fun getSubjectById(id: Int): Subject? = db.subjectDao().getSubjectById(id)
     suspend fun insertSubject(subject: Subject): Long = db.subjectDao().insertSubject(subject)

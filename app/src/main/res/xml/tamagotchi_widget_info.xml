@@ -7,4 +7,5 @@
     android:updatePeriodMillis="86400000"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:resizeMode="horizontal|vertical"
+    android:previewImage="@drawable/buddy_tamagotchi_happy_avatar"
     android:widgetCategory="home_screen" />

@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.aistudio.unibuddy.qywvsp.data.*
+import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,10 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Star
 class UniBuddyViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: UniBuddyRepository
+    private val firebaseManager = FirebaseManager()
+    val currentUser: FirebaseUser? get() = firebaseManager.currentUser
+
+    private val sentNotifications = mutableSetOf<String>()
 
     private val _isInitialized = MutableStateFlow(false)
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
@@ -52,11 +57,18 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 try { repository.getSetting("semester_start_date")?.let { _semesterStartDate.value = it.toLong() } } catch(e: Exception) {}
                 try { repository.getSetting("auto_checkin_enabled")?.let { _autoCheckinEnabled.value = it.toBoolean() } } catch(e: Exception) {}
                 try { repository.getSetting("smart_silence_enabled")?.let { _smartSilenceEnabled.value = it.toBoolean() } } catch(e: Exception) {}
+                try { repository.getSetting("default_exam_percentage")?.let { _defaultExamPercentage.value = it.toDouble() } } catch(e: Exception) {}
+                try { repository.getSetting("default_test_percentage")?.let { _defaultTestPercentage.value = it.toDouble() } } catch(e: Exception) {}
                 repository.getSetting("passed_subjects")?.let { _passedSubjects.value = it.split(",").filter { s -> s.isNotEmpty() }.toSet() }
                 repository.getSetting("focus_objectives")?.let { _focusObjectivesJson.value = it }
                 repository.getSetting("focus_sessions_history")?.let { _focusSessionsHistoryJson.value = it }
                 repository.getSetting("career")?.let { _career.value = it }
                 repository.getSetting("buddy_pose")?.let { _buddyPose.value = it }
+                try { repository.getSetting("buddy_xp")?.let { _buddyXp.value = it.toInt() } } catch(e: Exception) {}
+                try { repository.getSetting("cancelled_classes")?.let { _cancelledClasses.value = it.split(",").filter { s -> s.isNotBlank() }.toSet() } } catch(e: Exception) {}
+                try { repository.getSetting("custom_holidays")?.let {
+                    if (it.isNotEmpty()) _customHolidays.value = it.split(",").mapNotNull { ms -> ms.toLongOrNull() }
+                } } catch(e: Exception) {}
                 
                 try {
                     val allSettings = repository.getAllSettings()
@@ -93,48 +105,101 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     private suspend fun checkAndTriggerProactiveNotifications() {
         // Evaluate today's classes and exams for notifications
         val sdf = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
-        val todayStr = sdf.format(Date())
-        val dayOfWeekFormat = SimpleDateFormat("EEEE", Locale("es", "ES"))
-        var currentDayStr = dayOfWeekFormat.format(Date()).take(2).replaceFirstChar { it.uppercase() }
-        if (currentDayStr == "Má" || currentDayStr == "Ma") currentDayStr = "Ma"
-        if (currentDayStr == "Mi") currentDayStr = "Mi"
-        if (currentDayStr == "Ju") currentDayStr = "Ju"
-        if (currentDayStr == "Vi") currentDayStr = "Vi"
-        if (currentDayStr == "Sá" || currentDayStr == "Sa") currentDayStr = "Sa"
-        if (currentDayStr == "Do") currentDayStr = "Do"
-        if (currentDayStr == "Lu") currentDayStr = "Lu"
+        val todayFullStr = sdf.format(Date())
+        
+        // Find proper dayOfWeek code for matching subject sessions (Lu, Ma, Mi, Ju, Vi, Sá, Do)
+        val dayOfWeek = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+        val dayCode = when (dayOfWeek) {
+            Calendar.MONDAY -> "Lu"
+            Calendar.TUESDAY -> "Ma"
+            Calendar.WEDNESDAY -> "Mi"
+            Calendar.THURSDAY -> "Ju"
+            Calendar.FRIDAY -> "Vi"
+            Calendar.SATURDAY -> "Sá"
+            else -> "Do"
+        }
 
         val currentSubjects = repository.subjects.first()
-        val todayClasses = currentSubjects.filter { it.schedule.contains(currentDayStr, ignoreCase = true) }
+        val todayClasses = currentSubjects.filter { it.schedule.contains(dayCode, ignoreCase = true) }
         
         // 1. Tienes Examen Hoy
         val allAssessments = repository.assessments.first()
-        val todayExams = allAssessments.filter { it.examDate == todayStr }
+        val todayExams = allAssessments.filter { it.examDate == todayFullStr }
         if (todayExams.isNotEmpty()) {
             val examNames = todayExams.joinToString(", ") { it.name }
-            NotificationHelper.sendNotification(
-                getApplication(), 
-                "¡Día de Examen!", 
-                "Hoy tienes examen de: $examNames. ¡Mucho éxito!"
-            )
+            val examNotifKey = "exam_${todayFullStr}_${examNames}"
+            if (!sentNotifications.contains(examNotifKey)) {
+                sentNotifications.add(examNotifKey)
+                NotificationHelper.sendNotification(
+                    getApplication(), 
+                    "¡Día de Examen!", 
+                    "Hoy tienes examen de: $examNames. ¡Mucho éxito!"
+                )
+            }
         }
 
-        // 2. Próxima Clase (Vas bien / Llegas tarde)
-        if (todayClasses.isNotEmpty()) {
-            // Find next class (mocking for simplicity, picking the first one)
-            val nextClass = todayClasses.first()
-            val time = nextClass.sessions.firstOrNull { it.day.equals(currentDayStr, ignoreCase = true) }?.time ?: ""
-            val travelMins = _baseTravelTime.value
-            
-            // Assume the user has an arrival margin preference
-            val destName = _destination.value
-            NotificationHelper.sendNextClassNotification(
-                getApplication(),
-                nextClass.id,
-                destName,
-                "Tu próxima clase es ${nextClass.name}",
-                "Empieza a las $time. Tu tiempo de viaje es de $travelMins min. Toca aquí para marcar asistencia o avisar retraso."
-            )
+        // 2. Próxima Clase Reminders: "tiempo antes" (15-45m) and "hora de entrada" (-15 to 5m)
+        val todayCalendar = Calendar.getInstance()
+        val hour = todayCalendar.get(Calendar.HOUR_OF_DAY)
+        val min = todayCalendar.get(Calendar.MINUTE)
+        val currentTotalMin = hour * 60 + min
+        val todayStrShort = SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date())
+        val todayDateKey = SimpleDateFormat("dd_MM_yyyy", Locale.getDefault()).format(Date())
+
+        for (sub in todayClasses) {
+            val sessionsForToday = sub.sessions.filter { it.day.equals(dayCode, ignoreCase = true) }
+            for (session in sessionsForToday) {
+                try {
+                    val range = com.aistudio.unibuddy.qywvsp.ui.parseTimeRange(session.time)
+                    if (range != null) {
+                        val startHour = range.first.first
+                        val startMin = range.first.second
+                        val startTotalMin = startHour * 60 + startMin
+                        
+                        val diffMinutes = startTotalMin - currentTotalMin
+                        val travelMins = _locationBasedTravelMinutes.value ?: _baseTravelTime.value
+                        val destName = _destination.value
+
+                        // Reminder 1: "Tiempo Antes" (Alert 15 to 45 mins before class start)
+                        if (diffMinutes in 15..45) {
+                            val beforeNotifKey = "${sub.id}_before_${todayDateKey}"
+                            if (!sentNotifications.contains(beforeNotifKey)) {
+                                sentNotifications.add(beforeNotifKey)
+                                NotificationHelper.sendNextClassNotification(
+                                    getApplication(),
+                                    sub.id,
+                                    destName,
+                                    "Prepárate: Clase de ${sub.name}",
+                                    "Empieza en $diffMinutes min (a las ${session.time}). Tiempo estimado de viaje: $travelMins min."
+                                )
+                            }
+                        }
+
+                        // Reminder 2: "A la Hora de Entrada" (Alert from -15 mins up to class start time)
+                        if (diffMinutes in -15..1) {
+                            val atNotifKey = "${sub.id}_at_${todayDateKey}"
+                            if (!sentNotifications.contains(atNotifKey)) {
+                                // Double check if user has already checked in for today
+                                val existingLogs = repository.attendanceLogs.first().filter { 
+                                    it.subjectId == sub.id && it.date.startsWith(todayStrShort) 
+                                }
+                                if (existingLogs.isEmpty()) {
+                                    sentNotifications.add(atNotifKey)
+                                    NotificationHelper.sendNextClassNotification(
+                                        getApplication(),
+                                        sub.id,
+                                        destName,
+                                        "¡Hora de Entrada a ${sub.name}!",
+                                        "Tu clase ya está iniciando (hora: ${session.time}). Toca aquí para registrar asistencia en UniBuddy."
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
         }
     }
 
@@ -210,7 +275,40 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     val tripRecords: StateFlow<List<TripRecord>> = repository.tripRecords
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Real-time trip status state & stopwatch controller
+    private val _isTripActive = MutableStateFlow(false)
+    val isTripActive: StateFlow<Boolean> = _isTripActive.asStateFlow()
+
+    private val _tripElapsedSeconds = MutableStateFlow(0)
+    val tripElapsedSeconds: StateFlow<Int> = _tripElapsedSeconds.asStateFlow()
+
+    private var tripTimerJob: kotlinx.coroutines.Job? = null
+
+    fun startTrip() {
+        if (_isTripActive.value) return
+        _isTripActive.value = true
+        _tripElapsedSeconds.value = 0
+        tripTimerJob?.cancel()
+        tripTimerJob = viewModelScope.launch(Dispatchers.Default) {
+            while (_isTripActive.value) {
+                kotlinx.coroutines.delay(1000)
+                _tripElapsedSeconds.value += 1
+            }
+        }
+    }
+
+    fun endTrip(finalMinutes: Int) {
+        _isTripActive.value = false
+        tripTimerJob?.cancel()
+        tripTimerJob = null
+        recordTripRealTime(finalMinutes)
+        _tripElapsedSeconds.value = 0
+    }
+
     val assessments: StateFlow<List<Assessment>> = repository.assessments
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val tasks: StateFlow<List<Task>> = repository.tasks
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Settings flows
@@ -235,15 +333,108 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     private val _smartSilenceEnabled = MutableStateFlow(false)
     val smartSilenceEnabled: StateFlow<Boolean> = _smartSilenceEnabled.asStateFlow()
 
+    private val _defaultExamPercentage = MutableStateFlow(15.0)
+    val defaultExamPercentage: StateFlow<Double> = _defaultExamPercentage.asStateFlow()
+
+    private val _defaultTestPercentage = MutableStateFlow(7.0)
+    val defaultTestPercentage: StateFlow<Double> = _defaultTestPercentage.asStateFlow()
+
+    fun saveDefaultExamPercentage(percent: Double) {
+        viewModelScope.launch {
+            _defaultExamPercentage.value = percent
+            repository.saveSetting("default_exam_percentage", percent.toString())
+        }
+    }
+
+    fun saveDefaultTestPercentage(percent: Double) {
+        viewModelScope.launch {
+            _defaultTestPercentage.value = percent
+            repository.saveSetting("default_test_percentage", percent.toString())
+        }
+    }
+
+    private fun getEasterDate(year: Int): Calendar {
+        val a = year % 19
+        val b = year / 100
+        val c = year % 100
+        val d = b / 4
+        val e = b % 4
+        val f = (b + 8) / 25
+        val g = (b - f + 1) / 3
+        val h = (19 * a + b - d - g + 15) % 30
+        val i = c / 4
+        val k = c % 4
+        val l = (32 + 2 * e + 2 * i - h - k) % 7
+        val m = (a + 11 * h + 22 * l) / 451
+        val month = (h + l - 7 * m + 114) / 31
+        val day = ((h + l - 7 * m + 114) % 31) + 1
+        
+        return Calendar.getInstance().apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, month - 1)
+            set(Calendar.DAY_OF_MONTH, day)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+    }
+
     private val _semesterStartDate = MutableStateFlow<Long?>(null)
     val semesterStartDate: StateFlow<Long?> = _semesterStartDate.asStateFlow()
 
-    // 1-14: Clases, 15-16: Exámenes, 17-18: Convocatorias, >18: Vacaciones
+    fun updateSemesterStartDate(millis: Long) {
+        viewModelScope.launch {
+            _semesterStartDate.value = millis
+            repository.saveSetting("semester_start_date", millis.toString())
+        }
+    }
+
+    // 1-14: Clases, 15-16: Exámenes, 17: Recuperación, >17: Vacaciones
     val currentWeekOfSemester = _semesterStartDate.map { start ->
         if (start == null) return@map -1
-        val diff = System.currentTimeMillis() - start
-        val weeks = (diff / (1000L * 60 * 60 * 24 * 7)).toInt() + 1
-        weeks
+        val now = System.currentTimeMillis()
+        if (now < start) return@map 1
+        
+        var academicWeeks = 0
+        var currentCheck = start
+        val oneWeekMillis = 7L * 24L * 60L * 60L * 1000L
+        
+        while (currentCheck <= now) {
+            val cal = Calendar.getInstance().apply { timeInMillis = currentCheck }
+            val year = cal.get(Calendar.YEAR)
+            
+            // Calculate Semana Santa for this year
+            val easter = getEasterDate(year)
+            val palmSunday = (easter.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -7) }
+            
+            val isSemanaSanta = currentCheck >= palmSunday.timeInMillis && currentCheck <= easter.timeInMillis
+            
+            // Fiestas Patrias week contains September 14
+            val sep14 = Calendar.getInstance().apply {
+                set(Calendar.YEAR, year)
+                set(Calendar.MONTH, Calendar.SEPTEMBER)
+                set(Calendar.DAY_OF_MONTH, 14)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val fiestasPatriasStart = (sep14.clone() as Calendar).apply {
+                set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+            }
+            val fiestasPatriasEnd = (fiestasPatriasStart.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_YEAR, 7)
+            }
+            val isFiestasPatrias = currentCheck >= fiestasPatriasStart.timeInMillis && currentCheck <= fiestasPatriasEnd.timeInMillis
+            
+            if (!isSemanaSanta && !isFiestasPatrias) {
+                academicWeeks++
+            }
+            currentCheck += oneWeekMillis
+        }
+        
+        academicWeeks.coerceAtLeast(1)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), -1)
     
     val semesterState = currentWeekOfSemester.map { week ->
@@ -251,7 +442,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             week < 0 -> "Vacaciones"
             week in 1..14 -> "Clases"
             week in 15..16 -> "Exámenes"
-            week in 17..18 -> "Convocatorias"
+            week == 17 -> "Recuperación"
             else -> "Vacaciones"
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Vacaciones")
@@ -273,7 +464,22 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         }
     }
     
-    fun endSemester() {
+    fun checkFailedByAbsences(): Flow<List<String>> = flow {
+        val currentSubjects = repository.subjects.first()
+        val allAssessments = repository.assessments.first()
+        val failed = mutableListOf<String>()
+
+        for (sub in currentSubjects) {
+            val maxAbs = sub.totalClasses - Math.ceil(sub.totalClasses * (sub.requiredAttendancePercent / 100.0)).toInt()
+            val currentAbs = repository.getAbsencesForSubject(sub.id).first().size
+            if (currentAbs > maxAbs) {
+                failed.add(sub.name)
+            }
+        }
+        emit(failed)
+    }
+
+    fun endSemester(forcePassAbsences: Boolean = false) {
         viewModelScope.launch {
             val currentSubjects = repository.subjects.first()
             val allAssessments = repository.assessments.first()
@@ -282,11 +488,16 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             for (sub in currentSubjects) {
                 val subAssessments = allAssessments.filter { it.subjectId == sub.id }
                 val currentPercentage = subAssessments.sumOf { it.percentage }
-                val currentWeighted = subAssessments.sumOf { (it.grade ?: 0.0) * (it.percentage / 100.0) }
+                val currentWeighted = subAssessments.sumOf { it.grade ?: 0.0 }
                 
-                // If they passed (>=6.0) or if no exams were registered (assume passed)
-                if (currentPercentage == 0.0 || currentWeighted >= 6.0) {
-                    val curriculumMatch = com.aistudio.unibuddy.qywvsp.data.CurriculumData.industrialEngineering.find { 
+                // Calculate absences limit
+                val maxAbs = sub.totalClasses - Math.ceil(sub.totalClasses * (sub.requiredAttendancePercent / 100.0)).toInt()
+                val currentAbs = repository.getAbsencesForSubject(sub.id).first().size
+                val failedByAbsences = !forcePassAbsences && (currentAbs > maxAbs)
+
+                // If they passed (>=60.0 points in Nicaragua), or if no exams were registered (assume passed) AND they didn't fail by absences
+                if (!failedByAbsences && (currentPercentage == 0.0 || currentWeighted >= 60.0)) {
+                    val curriculumMatch = com.aistudio.unibuddy.qywvsp.data.CurriculumData.getSubjectsFor(_userUniversity.value, _career.value).find { 
                         it.name.equals(sub.name, ignoreCase = true) 
                     }
                     if (curriculumMatch != null) {
@@ -372,8 +583,14 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     private val _career = MutableStateFlow("Ingeniería Industrial")
     val career: StateFlow<String> = _career.asStateFlow()
 
+    private val _profilePhotoUri = MutableStateFlow<String?>(null)
+    val profilePhotoUri: StateFlow<String?> = _profilePhotoUri.asStateFlow()
+
     private val _buddyPose = MutableStateFlow("idle")
     val buddyPose: StateFlow<String> = _buddyPose.asStateFlow()
+    
+    private val _buddyXp = MutableStateFlow(0)
+    val buddyXp: StateFlow<Int> = _buddyXp.asStateFlow()
 
     private val _subjectImportanceMap = MutableStateFlow<Map<Int, String>>(emptyMap())
     val subjectImportanceMap: StateFlow<Map<Int, String>> = _subjectImportanceMap.asStateFlow()
@@ -383,6 +600,12 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
 
     private val _focusSessionsHistoryJson = MutableStateFlow("")
     val focusSessionsHistoryJson: StateFlow<String> = _focusSessionsHistoryJson.asStateFlow()
+    
+    private val _customHolidays = MutableStateFlow<List<Long>>(emptyList())
+    val customHolidays: StateFlow<List<Long>> = _customHolidays.asStateFlow()
+    
+    private val _cancelledClasses = MutableStateFlow<Set<String>>(emptySet())
+    val cancelledClasses: StateFlow<Set<String>> = _cancelledClasses.asStateFlow()
 
     fun saveFocusObjectives(json: String) {
         viewModelScope.launch {
@@ -465,18 +688,203 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     private val _isLocationAvailable = MutableStateFlow(false)
     val isLocationAvailable: StateFlow<Boolean> = _isLocationAvailable.asStateFlow()
 
+    private val _currentDistanceToCollege = MutableStateFlow<Double?>(null)
+    val currentDistanceToCollege: StateFlow<Double?> = _currentDistanceToCollege.asStateFlow()
+
+    private val _locationBasedTravelMinutes = MutableStateFlow(30)
+    val locationBasedTravelMinutes: StateFlow<Int> = _locationBasedTravelMinutes.asStateFlow()
+
     private val _currentLocationName = MutableStateFlow("Buscando...")
     val currentLocationName: StateFlow<String> = _currentLocationName.asStateFlow()
+    
+    private val _currentLat = MutableStateFlow<Double?>(null)
+    val currentLat: StateFlow<Double?> = _currentLat.asStateFlow()
+    
+    private val _currentLon = MutableStateFlow<Double?>(null)
+    val currentLon: StateFlow<Double?> = _currentLon.asStateFlow()
 
-    fun updateLocationStatus(available: Boolean, name: String = "") {
+    fun addCustomHoliday(dateMs: Long) {
+        val current = _customHolidays.value.toMutableList()
+        current.add(dateMs)
+        _customHolidays.value = current
+        viewModelScope.launch {
+            repository.saveSetting("custom_holidays", current.joinToString(","))
+        }
+    }
+
+    fun removeCustomHoliday(dateMs: Long) {
+        val current = _customHolidays.value.toMutableList()
+        current.remove(dateMs)
+        _customHolidays.value = current
+        viewModelScope.launch {
+            repository.saveSetting("custom_holidays", current.joinToString(","))
+        }
+    }
+
+    fun isNicaraguaHoliday(dateMs: Long): Boolean {
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = dateMs
+        val day = cal.get(Calendar.DAY_OF_MONTH)
+        val month = cal.get(Calendar.MONTH) + 1 // 1-12
+        val year = cal.get(Calendar.YEAR)
+        
+        // Fixed holidays
+        if (day == 1 && month == 1) return true // Año Nuevo
+        if (day == 1 && month == 5) return true // Día del Trabajo
+        if (day == 19 && month == 7) return true // Revolución
+        if (day == 14 && month == 9) return true // San Jacinto
+        if (day == 15 && month == 9) return true // Independencia
+        if (day == 8 && month == 12) return true // Inmaculada Concepción
+        if (day == 25 && month == 12) return true // Navidad
+        
+        // Check custom holidays
+        for (customMs in _customHolidays.value) {
+            val customCal = Calendar.getInstance().apply { timeInMillis = customMs }
+            if (customCal.get(Calendar.DAY_OF_MONTH) == day && customCal.get(Calendar.MONTH) + 1 == month && customCal.get(Calendar.YEAR) == year) {
+                return true
+            }
+        }
+        
+        return false
+    }
+
+    fun updateLocationStatus(available: Boolean, name: String = "", lat: Double? = null, lon: Double? = null) {
         _isLocationAvailable.value = available
         if (name.isNotEmpty()) _currentLocationName.value = name
+        
+        if (available && lat != null && lon != null) {
+            _currentLat.value = lat
+            _currentLon.value = lon
+            viewModelScope.launch(Dispatchers.IO) {
+                // Determine saved destination lat/lon
+                val savedLatStr = repository.getSetting("destination_lat")
+                val savedLonStr = repository.getSetting("destination_lon")
+                
+                var targetLat = savedLatStr?.toDoubleOrNull()
+                var targetLon = savedLonStr?.toDoubleOrNull()
+                
+                // If no saved setting, try to get from selected university campus
+                if (targetLat == null || targetLon == null) {
+                    val uniCoords = getSelectedUniversityCoords()
+                    targetLat = uniCoords?.first ?: 12.1156 // Default to Managua if everything fails
+                    targetLon = uniCoords?.second ?: -86.2369
+                }
+                
+                val distance = calculateDistance(lat, lon, targetLat, targetLon)
+                _currentDistanceToCollege.value = distance
+                
+                // If within 1.5 km (accommodating GPS errors), consider it "En la universidad"
+                if (distance <= 1.5) {
+                    _currentLocationName.value = "En la universidad"
+                    
+                    if (_autoCheckinEnabled.value && !isNicaraguaHoliday(System.currentTimeMillis())) {
+                        autoCheckinToCurrentClass()
+                    }
+                }
+                
+                // Estimate travel time: 3.5 mins per km + 12 mins buffer.
+                val estimatedMins = (distance * 3.5).toInt() + 12
+                _locationBasedTravelMinutes.value = estimatedMins
+                
+                checkAndTriggerProactiveNotifications()
+            }
+        } else {
+            _currentDistanceToCollege.value = null
+            _locationBasedTravelMinutes.value = _baseTravelTime.value
+        }
+    }
+
+    private suspend fun autoCheckinToCurrentClass() {
+        val currentSubjects = repository.subjects.first()
+        val todayStrShort = SimpleDateFormat("Lu", Locale("es", "ES")).format(Date()) // need proper mapping
+        val todayCalendar = Calendar.getInstance()
+        val dayOfWeek = todayCalendar.get(Calendar.DAY_OF_WEEK)
+        val dayCode = when (dayOfWeek) {
+            Calendar.MONDAY -> "Lu"
+            Calendar.TUESDAY -> "Ma"
+            Calendar.WEDNESDAY -> "Mi"
+            Calendar.THURSDAY -> "Ju"
+            Calendar.FRIDAY -> "Vi"
+            Calendar.SATURDAY -> "Sá"
+            else -> "Do"
+        }
+        
+        val hour = todayCalendar.get(Calendar.HOUR_OF_DAY)
+        val min = todayCalendar.get(Calendar.MINUTE)
+        val currentTotalMin = hour * 60 + min
+        
+        val todayStr = SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date())
+        
+        for (sub in currentSubjects) {
+            val sessionsForToday = sub.sessions.filter { it.day == dayCode }
+            for (session in sessionsForToday) {
+                try {
+                    val range = com.aistudio.unibuddy.qywvsp.ui.parseTimeRange(session.time)
+                    if (range != null) {
+                        val startHour = range.first.first
+                        val startMin = range.first.second
+                        val endHour = range.second.first
+                        val endMin = range.second.second
+                        val startTotalMin = startHour * 60 + startMin
+                        val endTotalMin = endHour * 60 + endMin
+                        
+                        // If within class time (-15 mins to end time)
+                        if (currentTotalMin in (startTotalMin - 15)..endTotalMin) {
+                            val isCancelled = _cancelledClasses.value.contains("${sub.id}_$todayStr")
+                            if (!isCancelled) {
+                                val existingLogs = repository.attendanceLogs.first().filter { it.subjectId == sub.id && it.date.startsWith(todayStr) }
+                                if (existingLogs.isEmpty()) {
+                                    repository.insertAttendanceLog(com.aistudio.unibuddy.qywvsp.data.AttendanceLog(subjectId = sub.id, isPresent = true, date = "$todayStr (Automático)"))
+                                }
+                                
+                                // Auto Silence
+                                if (_smartSilenceEnabled.value) {
+                                    try {
+                                        val audioManager = getApplication<Application>().getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                                        val notificationManager = getApplication<Application>().getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                                        if (notificationManager.isNotificationPolicyAccessGranted) {
+                                            audioManager.ringerMode = android.media.AudioManager.RINGER_MODE_VIBRATE
+                                        }
+                                    } catch(e: Exception) {}
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {}
+            }
+        }
+    }
+
+    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371 // km
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return r * c
     }
 
     fun getSelectedUniversityCoords(): Pair<Double, Double>? {
         val uni = universities.find { it.name == _destination.value }
         val campus = uni?.campuses?.firstOrNull()
         return if (campus != null) Pair(campus.lat, campus.lng) else null
+    }
+
+    fun getSystemLog(): String {
+        val totalSubjects = subjects.value.size
+        val totalAssessments = assessments.value.size
+        val totalAbsences = absences.value.size
+        return """
+            UniBuddy System Log
+            Version: 1.5 (Build 6)
+            Time: ${Calendar.getInstance().time}
+            Stats: Subjects($totalSubjects), Assessments($totalAssessments), Absences($totalAbsences)
+            Location Available: ${_isLocationAvailable.value}
+            Distance to Target: ${_currentDistanceToCollege.value ?: "Unknown"} km
+            Weather: ${_weatherDescription.value}
+        """.trimIndent()
     }
 
     private val _googleMapsApiKey = MutableStateFlow("")
@@ -511,6 +919,11 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _isOnboardingCompleted.value = completed
             repository.saveSetting("onboarding_completed", completed.toString())
+            if (completed && _semesterStartDate.value == null) {
+                val now = System.currentTimeMillis()
+                _semesterStartDate.value = now
+                repository.saveSetting("semester_start_date", now.toString())
+            }
         }
     }
 
@@ -537,6 +950,13 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun saveProfilePhoto(uri: String) {
+        viewModelScope.launch {
+            _profilePhotoUri.value = uri
+            repository.saveSetting("profile_photo_uri", uri)
+        }
+    }
+
     fun saveUserUniversity(universityName: String) {
         viewModelScope.launch {
             _userUniversity.value = universityName
@@ -548,6 +968,28 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _buddyPose.value = poseName
             repository.saveSetting("buddy_pose", poseName)
+        }
+    }
+
+    fun addBuddyXp(xp: Int) {
+        viewModelScope.launch {
+            val newXp = _buddyXp.value + xp
+            _buddyXp.value = newXp
+            repository.saveSetting("buddy_xp", newXp.toString())
+        }
+    }
+
+    fun toggleCancelledClass(subjectId: Int, dateStr: String) {
+        viewModelScope.launch {
+            val key = "${subjectId}_${dateStr}"
+            val current = _cancelledClasses.value.toMutableSet()
+            if (current.contains(key)) {
+                current.remove(key)
+            } else {
+                current.add(key)
+            }
+            _cancelledClasses.value = current
+            repository.saveSetting("cancelled_classes", current.joinToString(","))
         }
     }
 
@@ -595,13 +1037,59 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 careerName = _career.value
             )
             
+            val staticSubjects = com.aistudio.unibuddy.qywvsp.data.CurriculumData.getSubjectsFor(
+                _userUniversity.value ?: "UNI",
+                _career.value ?: "Ing. Industrial"
+            )
+
+            val passingGrade = if (_userUniversity.value == "UAM" || _userUniversity.value == "UCA" || _userUniversity.value == "Keiser") 70.0 else 60.0
+            val currentPassed = _passedSubjects.value.toMutableSet()
+
             subjects.forEach { parsed ->
+                // Try matching with static curriculum
+                val matchedStatic = staticSubjects.find {
+                    it.code.equals(parsed.code, ignoreCase = true) ||
+                    it.name.equals(parsed.name, ignoreCase = true)
+                }
+
+                val subjectCode = matchedStatic?.code ?: parsed.code
+                val subjectName = matchedStatic?.name ?: parsed.name
+                val subjectSemId = matchedStatic?.let { "Semestre ${it.semester}" } ?: "S/D"
+
+                // Check and mark as passed if grade is passing
+                val isPassing = parsed.grade >= passingGrade
+                if (isPassing) {
+                    currentPassed.add(subjectCode)
+                    matchedStatic?.let { currentPassed.add(it.code) }
+                }
+
+                // Construct a beautiful, readable academic term string for the year column
+                val formattedSem = when (parsed.semester.uppercase()) {
+                    "PRIMER" -> "1er Semestre"
+                    "SEGUNDO" -> "2do Semestre"
+                    "TERCER" -> "3er Semestre"
+                    "CUARTO" -> "4to Semestre"
+                    "QUINTO" -> "5to Semestre"
+                    "SEXTO" -> "6to Semestre"
+                    "SEPTIMO", "SÉPTIMO" -> "7mo Semestre"
+                    "OCTAVO" -> "8vo Semestre"
+                    "NOVENO" -> "9no Semestre"
+                    "DECIMO", "DÉCIMO" -> "10mo Semestre"
+                    "VERANO" -> "Curso de Verano"
+                    else -> parsed.semester
+                }
+                val academicTerm = if (formattedSem.isNotEmpty() && formattedSem != "S/D") {
+                    "$formattedSem ${parsed.year}"
+                } else {
+                    "Sin Semestre"
+                }
+
                 val subjectId = repository.insertPensumSubject(
                     PensumSubject(
                         careerId = careerId,
-                        code = parsed.code,
-                        name = parsed.name,
-                        semester = "S/D", // Derived from parsed data if possible
+                        code = subjectCode,
+                        name = subjectName,
+                        semester = subjectSemId,
                         credits = parsed.credits,
                         isNumbers = false
                     )
@@ -611,11 +1099,14 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                         pensumSubjectId = subjectId.toInt(),
                         grade = parsed.grade,
                         status = parsed.status,
-                        year = "S/D",
+                        year = academicTerm,
                         academicGroup = parsed.group
                     )
                 )
             }
+
+            _passedSubjects.value = currentPassed
+            repository.saveSetting("passed_subjects", currentPassed.joinToString(","))
         }
     }
 
@@ -677,15 +1168,17 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             val subjectId = repository.insertSubject(subject).toInt()
             
             // Auto-generate Grading System (0-100 total)
-            // Unit 1 (50)
-            repository.insertAssessment(Assessment(subjectId = subjectId, name = "U1: Examen", grade = null, percentage = 10.0))
+            val examP = _defaultExamPercentage.value
+            val testP = _defaultTestPercentage.value
+            // Corte 1 (50)
+            repository.insertAssessment(Assessment(subjectId = subjectId, name = "C1: Examen", grade = null, percentage = examP))
             for (i in 1..5) {
-                repository.insertAssessment(Assessment(subjectId = subjectId, name = "U1: Prueba $i", grade = null, percentage = 8.0))
+                repository.insertAssessment(Assessment(subjectId = subjectId, name = "C1: Tarea $i", grade = null, percentage = testP))
             }
-            // Unit 2 (50)
-            repository.insertAssessment(Assessment(subjectId = subjectId, name = "U2: Examen", grade = null, percentage = 10.0))
+            // Corte 2 (50)
+            repository.insertAssessment(Assessment(subjectId = subjectId, name = "C2: Examen", grade = null, percentage = examP))
             for (i in 1..5) {
-                repository.insertAssessment(Assessment(subjectId = subjectId, name = "U2: Prueba $i", grade = null, percentage = 8.0))
+                repository.insertAssessment(Assessment(subjectId = subjectId, name = "C2: Tarea $i", grade = null, percentage = testP))
             }
         }
     }
@@ -698,6 +1191,15 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
 
     fun deleteSubject(subject: Subject) {
         viewModelScope.launch {
+            // Manually delete dependent records to prevent any orphaning
+            val allTasks = repository.tasks.first().filter { it.subjectId == subject.id }
+            val allAssessments = repository.assessments.first().filter { it.subjectId == subject.id }
+            val allAbsences = repository.getAbsencesForSubject(subject.id).first()
+            
+            allTasks.forEach { repository.deleteTaskById(it.id) }
+            allAssessments.forEach { repository.deleteAssessmentById(it.id) }
+            allAbsences.forEach { repository.deleteAbsenceById(it.id) }
+            
             repository.deleteSubject(subject)
         }
     }
@@ -730,6 +1232,12 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
 
     fun addAssessment(subjectId: Int, name: String, grade: Double?, percentage: Double, examDate: String = "") {
         viewModelScope.launch {
+            val existing = repository.getAssessmentsForSubject(subjectId).first()
+            val currentSum = existing.sumOf { it.percentage }
+            if (currentSum + percentage > 100.0) {
+                _snackbarEvent.emit("La suma total de evaluaciones no puede superar el 100% (Actual: $currentSum%, Nuevo: ${currentSum + percentage}%)")
+                return@launch
+            }
             repository.insertAssessment(Assessment(subjectId = subjectId, name = name, grade = grade, percentage = percentage, examDate = examDate))
         }
     }
@@ -737,6 +1245,24 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     fun deleteAssessment(assessmentId: Int) {
         viewModelScope.launch {
             repository.deleteAssessmentById(assessmentId)
+        }
+    }
+
+    fun addTask(subjectId: Int, title: String, type: String, dueDate: String) {
+        viewModelScope.launch {
+            repository.insertTask(Task(subjectId = subjectId, title = title, type = type, dueDate = dueDate))
+        }
+    }
+
+    fun toggleTask(task: Task) {
+        viewModelScope.launch {
+            repository.updateTask(task.copy(isCompleted = !task.isCompleted))
+        }
+    }
+
+    fun deleteTask(taskId: Int) {
+        viewModelScope.launch {
+            repository.deleteTaskById(taskId)
         }
     }
 

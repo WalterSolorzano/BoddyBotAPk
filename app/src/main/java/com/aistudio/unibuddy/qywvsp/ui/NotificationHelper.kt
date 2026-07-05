@@ -36,12 +36,15 @@ object NotificationHelper {
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info) // Fallback standard system drawable icon
+            .setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setColor(android.graphics.Color.parseColor("#3B82F6")) // ProBlue
             .setAutoCancel(true)
+            .setLights(android.graphics.Color.parseColor("#3B82F6"), 1000, 1000)
 
         with(NotificationManagerCompat.from(context)) {
             try {
@@ -86,12 +89,15 @@ object NotificationHelper {
         )
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setColor(android.graphics.Color.parseColor("#F97316")) // Amber
             .setAutoCancel(true)
+            .setLights(android.graphics.Color.parseColor("#F97316"), 1000, 1000)
             .addAction(android.R.drawable.ic_menu_today, "Marcar Asistencia", attendPendingIntent)
             .addAction(android.R.drawable.ic_menu_send, "Avisar Retraso", latePendingIntent)
 

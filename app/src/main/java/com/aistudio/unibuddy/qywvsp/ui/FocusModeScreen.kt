@@ -195,6 +195,9 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
                 val newRecord = FocusSessionRecord(todayStr, workMinutes, currentTask)
                 val updatedHistory = listOf(newRecord) + sessionsHistory
                 viewModel.saveFocusSessionsHistory(updatedHistory.toSessionsJsonString())
+                
+                // Reward Buddy XP
+                viewModel.addBuddyXp(workMinutes)
             }
 
             // Auto switch modes
@@ -256,15 +259,23 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
         label = "wave_phase"
     )
 
-    // Interactive custom ambient wave haptic vibration
-    LaunchedEffect(isPlayingAmbient, wavePhase) {
+    // Interactive custom ambient wave haptic vibration & Audio Engine
+    LaunchedEffect(isPlayingAmbient, selectedSoundscape) {
         if (isPlayingAmbient && selectedSoundscape != null) {
-            // Subtle rhythmic vibration aligned to ambient wave peak
-            try {
-                hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            } catch (e: Exception) {}
+            AmbientAudioEngine.playSoundscape(selectedSoundscape!!.id)
+        } else {
+            AmbientAudioEngine.stop()
         }
     }
+    
+    // Stop audio when leaving screen
+    DisposableEffect(Unit) {
+        onDispose {
+            AmbientAudioEngine.stop()
+        }
+    }
+
+
 
     LazyColumn(
         modifier = Modifier
@@ -300,12 +311,26 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "UniBuddy",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = SlateGray
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "UniBuddy",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SlateGray
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            val buddyXp by viewModel.buddyXp.collectAsStateWithLifecycle()
+                            Surface(
+                                color = ProBlue.copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Star, contentDescription = null, tint = ProBlue, modifier = Modifier.size(10.dp))
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text("$buddyXp XP", fontSize = 10.sp, color = ProBlue, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = mascotQuote,
@@ -503,6 +528,30 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
                                 imageVector = Icons.Default.Clear,
                                 contentDescription = "Reiniciar",
                                 tint = NavyBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        
+                        // New: Completar Session button
+                        IconButton(
+                            onClick = {
+                                // Simulate finishing the current session
+                                isRunning = false
+                                isWorkMode = !isWorkMode // Toggle mode
+                                timeLeft = if (isWorkMode) workMinutes * 60 else breakMinutes * 60
+                                context.startService(android.content.Intent(context, PomodoroService::class.java).apply {
+                                    action = PomodoroService.ACTION_STOP
+                                })
+                                // Optional: add toast or effect here
+                            },
+                            modifier = Modifier
+                                .size(52.dp)
+                                .background(Color(0xFFE8F5E9), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Completar",
+                                tint = Color(0xFF2E7D32),
                                 modifier = Modifier.size(20.dp)
                             )
                         }

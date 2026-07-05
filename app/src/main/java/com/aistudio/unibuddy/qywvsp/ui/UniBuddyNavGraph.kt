@@ -24,7 +24,7 @@ fun UniBuddyNavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = startDestination,
+        startDestination = if (viewModel.currentUser != null) "dashboard" else "login",
         modifier = modifier,
         enterTransition = {
             slideInHorizontally(
@@ -51,6 +51,17 @@ fun UniBuddyNavGraph(
             ) + fadeOut(animationSpec = tween(300))
         }
     ) {
+        composable("login") {
+            AuthScreen(
+                viewModel = viewModel,
+                onAuthSuccess = {
+                    navController.navigate("dashboard") {
+                        popUpTo("login") { inclusive = true }
+                    }
+                }
+            )
+        }
+
         composable("onboarding") {
             OnboardingScreen(
                 viewModel = viewModel,
@@ -76,6 +87,9 @@ fun UniBuddyNavGraph(
                 },
                 onNavigateToFocus = {
                     navController.navigate("focus")
+                },
+                onNavigateToStats = {
+                    navController.navigate("stats")
                 }
             )
         }

@@ -5,6 +5,8 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
+  alias(libs.plugins.firebase.appdistribution)
+  alias(libs.plugins.google.services)
 }
 
 android {
@@ -26,8 +28,18 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      firebaseAppDistribution {
+        appId = "1:288847863949:android:a1b2c3d4e5f6g7h8i9j0"
+        testers = "ws692888@gmail.com"
+        releaseNotes = "Nueva versión de prueba con Firebase y Widgets Premium!"
+      }
     }
     debug {
+      firebaseAppDistribution {
+        appId = "1:288847863949:android:a1b2c3d4e5f6g7h8i9j0"
+        testers = "ws692888@gmail.com"
+        releaseNotes = "Nueva versión debug con Firebase!"
+      }
     }
   }
   compileOptions {
@@ -40,6 +52,15 @@ android {
   buildFeatures {
     compose = true
     buildConfig = true
+  }
+  packaging {
+    resources {
+      excludes += "/META-INF/DEPENDENCIES"
+      excludes += "/META-INF/LICENSE"
+      excludes += "/META-INF/LICENSE.txt"
+      excludes += "/META-INF/NOTICE"
+      excludes += "/META-INF/NOTICE.txt"
+    }
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
 }
@@ -84,9 +105,11 @@ dependencies {
   implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.runtime)
-    // implementation(libs.coil.compose)
+    implementation(libs.coil.compose)
     implementation(libs.converter.moshi)
     implementation(libs.firebase.ai)
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.logging.interceptor)
@@ -114,12 +137,14 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     "ksp"(libs.androidx.room.compiler)
     "ksp"(libs.moshi.kotlin.codegen)
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
+    implementation("com.itextpdf:itextg:5.5.10")
   }
 
 tasks.register("gitRestore") {
     doLast {
-        val pb = ProcessBuilder("git", "checkout", "src/main/java/com/aistudio/unibuddy/qywvsp/ui/UniBuddyApp.kt")
-        pb.directory(projectDir)
+        val pb = ProcessBuilder("git", "checkout", ".")
+        pb.directory(projectDir.parentFile)
         val p = pb.start()
         p.waitFor()
     }

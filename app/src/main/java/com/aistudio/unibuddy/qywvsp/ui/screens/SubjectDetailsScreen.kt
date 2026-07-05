@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,6 +85,8 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
     var manualDateInput by remember { mutableStateOf("") }
     var selectedStatusIsPresent by remember { mutableStateOf(true) } // true = Presente, false = Ausente
     var filterTab by remember { mutableStateOf("Todo") } // "Todo", "Asistencias", "Faltas"
+    var activeDetailTab by remember { mutableStateOf("Asistencias") } // "Asistencias", "Tareas"
+    var currentMonthCal by remember { mutableStateOf(Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1) }) }
 
     val mergedLogs = remember(attendanceLogs, absences) {
         val list = attendanceLogs.map { IntegratedLogItem(id = it.id, date = it.date, isPresent = it.isPresent, isLegacy = false) }.toMutableList()
@@ -108,6 +111,7 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
+            .verticalScroll(rememberScrollState())
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -148,7 +152,8 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                                 item {
                                     SessionEditor(
                                         sessions = editingSessions,
-                                        allSubjects = subjects
+                                        allSubjects = subjects,
+                                        currentSubjectId = subject.id
                                     )
                                 }
                             }
@@ -162,7 +167,7 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                                     viewModel.updateSubject(
                                         subject.copy(
                                             schedule = if (computedSchedule.isEmpty()) "Sin horario" else computedSchedule,
-                                            sessions = emptyList() /* removed jsonString */,
+                                            sessions = editingSessions.toList(),
                                             totalClasses = computedClasses
                                         )
                                     )
@@ -190,8 +195,8 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                 if (showDeleteConfirmation) {
                     AlertDialog(
                         onDismissRequest = { showDeleteConfirmation = false },
-                        title = { Text("Eliminar materia", color = NavyBlue, fontWeight = FontWeight.Bold) },
-                        text = { Text("¿Deseas eliminar definitivamente ${subject.name}? Perderás todas sus asistencias registradas y exámenes.", color = SlateGray) },
+                        title = { Text("¿Estás seguro?", color = NavyBlue, fontWeight = FontWeight.Bold) },
+                        text = { Text("Se borrarán todas las notas y faltas de esta materia de forma irreversible.", color = SlateGray) },
                         confirmButton = {
                             Button(
                                 onClick = {
@@ -271,24 +276,21 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
         Spacer(modifier = Modifier.height(10.dp))
 
         val assessmentsState by viewModel.getAssessmentsForSubject(subject.id).collectAsStateWithLifecycle(emptyList())
-        val currentAvg = if (assessmentsState.filter { it.grade != null }.isNotEmpty()) {
-            assessmentsState.filter { it.grade != null }.map { it.grade!! }.average()
-        } else {
-            100.0
-        }
+        val currentAvg = assessmentsState.filter { it.grade != null }.sumOf { it.grade!! }
 
+        val pointsLost = assessmentsState.filter { it.grade != null }.sumOf { it.percentage - it.grade!! }
         val buddyPose = when {
-            currentAvg < 51.0 || remaining <= 1 -> "idle"
-            currentAvg >= 85.0 && remaining >= 3 -> "greeting"
+            pointsLost > 30.0 || remaining <= 1 -> "idle"
+            pointsLost < 10.0 && remaining >= 3 -> "greeting"
             else -> "idle"
         }
-        val isBuddyHappy = currentAvg >= 51.0 && remaining > 1
-        val isBuddyWorried = currentAvg < 51.0 || remaining <= 1
+        val isBuddyHappy = pointsLost < 15.0 && remaining > 1
+        val isBuddyWorried = pointsLost > 30.0 || remaining <= 1
 
         val bubbleText = when {
-            currentAvg >= 85.0 && remaining >= 3 -> "¡Vas volando, genio! Promedio de ${String.format(Locale.US, "%.1f", currentAvg)} y tienes $remaining vidas de sobra. ¡Excelente trabajo!"
-            currentAvg < 51.0 || remaining <= 1 -> "¡Cuidado! Promedio bajo (${String.format(Locale.US, "%.1f", currentAvg)}) o casi sin vidas ($remaining rest.). ¡A estudiar más!"
-            else -> "¡Todo en orden! Buen ritmo académico. Sigue así y cerramos el semestre como campeones."
+            pointsLost < 10.0 && remaining >= 3 -> "¡Vas volando! Has perdido muy pocos puntos (${String.format(Locale.US, "%.1f", pointsLost)}) y tienes $remaining vidas de sobra. ¡Excelente trabajo!"
+            pointsLost > 30.0 || remaining <= 1 -> "¡Cuidado! Has perdido ${String.format(Locale.US, "%.1f", pointsLost)} pts o estás casi sin vidas ($remaining rest.). ¡No te confíes!"
+            else -> "¡Todo en orden! Buen ritmo académico. Acumulando puntos para cerrar el semestre sin problemas."
         }
 
         Card(
@@ -373,7 +375,7 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (maxAbs <= 0) {
-                            Text("No podés faltar", fontSize = 11.sp, color = Terracotta, fontWeight = FontWeight.Bold)
+                            Text("Alto riesgo al faltar", fontSize = 11.sp, color = Terracotta, fontWeight = FontWeight.Bold)
                         } else {
                             val displayMax = maxAbs.coerceAtMost(8)
                             val displayRemaining = remaining.coerceAtLeast(0).coerceAtMost(displayMax)
@@ -449,7 +451,7 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                                     statusColor = Terracotta
                                     statusTitle = "FALTAS AGOTADAS"
                                     statusIcon = Icons.Default.Clear
-                                    statusDesc = "Estás libre. No podés faltar a ninguna clase."
+                                    statusDesc = "Estás en el límite. Se recomienda no faltar a ninguna clase más."
                                 }
                                 hasExamOnDay -> {
                                     statusColor = Terracotta
@@ -536,89 +538,483 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // History Filter tab
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        // Main Tab Switcher
+        TabRow(
+            selectedTabIndex = if (activeDetailTab == "Asistencias") 0 else 1,
+            containerColor = Color(0xFFF1F5F9),
+            contentColor = NavyBlue,
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[if (activeDetailTab == "Asistencias") 0 else 1]),
+                    color = try { Color(android.graphics.Color.parseColor(subject.colorHex)) } catch(e: Exception) { DarkGreen }
+                )
+            },
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
         ) {
-            listOf("Todo", "Asistencias", "Faltas").forEach { label ->
-                val isSelected = filterTab == label
-                Button(
-                    onClick = { filterTab = label },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isSelected) DarkGreen else SlateGray.copy(alpha = 0.1f)
-                    ),
-                    shape = RoundedCornerShape(20.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Text(
-                        text = label,
-                        color = if (isSelected) Bone else NavyBlue,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
-                    )
+            Tab(
+                selected = activeDetailTab == "Asistencias",
+                onClick = { activeDetailTab = "Asistencias" },
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(imageVector = Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp), tint = NavyBlue)
+                        Text("Asistencias", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyBlue)
+                    }
                 }
-            }
+            )
+            Tab(
+                selected = activeDetailTab == "Tareas",
+                onClick = { activeDetailTab = "Tareas" },
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(imageVector = Icons.Default.List, contentDescription = null, modifier = Modifier.size(16.dp), tint = NavyBlue)
+                        Text("Tareas / Entregas", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyBlue)
+                    }
+                }
+            )
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        if (filteredLogs.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.4f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Ningún registro coincide con el filtro.", color = SlateGray)
+        if (activeDetailTab == "Asistencias") {
+            // MONTHLY CALENDAR
+            Text(
+                text = "CALENDARIO MENSUAL DE ASISTENCIAS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = NavyBlue,
+                letterSpacing = 0.5.sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Month Selector Header
+            val monthName = remember(currentMonthCal) {
+                currentMonthCal.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale("es", "NI")) ?: ""
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(0.4f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            val yearValue = remember(currentMonthCal) { currentMonthCal.get(Calendar.YEAR) }
+
+            val firstDayOfWeek = remember(currentMonthCal) {
+                val day = currentMonthCal.get(Calendar.DAY_OF_WEEK) // Sunday=1, Monday=2...
+                when (day) {
+                    Calendar.MONDAY -> 0
+                    Calendar.TUESDAY -> 1
+                    Calendar.WEDNESDAY -> 2
+                    Calendar.THURSDAY -> 3
+                    Calendar.FRIDAY -> 4
+                    Calendar.SATURDAY -> 5
+                    Calendar.SUNDAY -> 6
+                    else -> 0
+                }
+            }
+            val maxDaysInMonth = remember(currentMonthCal) {
+                currentMonthCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, Bone)
             ) {
-                items(filteredLogs, key = { "" + it.id + "_" + it.isLegacy }) { item ->
-                    val hapticFeedback = LocalHapticFeedback.current
-                    val dismissState = rememberSwipeToDismissBoxState(
-                        confirmValueChange = { dismissValue ->
-                            when (dismissValue) {
-                                SwipeToDismissBoxValue.EndToStart -> {
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    if (item.isLegacy) {
-                                        viewModel.deleteAbsence(item.id)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = {
+                            val prev = (currentMonthCal.clone() as Calendar).apply { add(Calendar.MONTH, -1) }
+                            currentMonthCal = prev
+                        }) {
+                            Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Mes anterior", tint = NavyBlue)
+                        }
+                        Text(
+                            text = "${monthName.uppercase(Locale.getDefault())} $yearValue",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = NavyBlue
+                        )
+                        IconButton(onClick = {
+                            val next = (currentMonthCal.clone() as Calendar).apply { add(Calendar.MONTH, 1) }
+                            currentMonthCal = next
+                        }) {
+                            Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Siguiente mes", tint = NavyBlue)
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                        listOf("L", "M", "M", "J", "V", "S", "D").forEach { d ->
+                            Text(
+                                text = d,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SlateGray,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.width(36.dp)
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    val totalCells = firstDayOfWeek + maxDaysInMonth
+                    val rowsCount = ceil(totalCells.toFloat() / 7f).toInt()
+                    
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (r in 0 until rowsCount) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                                for (c in 0 until 7) {
+                                    val cellIndex = r * 7 + c
+                                    val dayNum = cellIndex - firstDayOfWeek + 1
+                                    
+                                    if (cellIndex < firstDayOfWeek || dayNum > maxDaysInMonth) {
+                                        Box(modifier = Modifier.size(36.dp))
                                     } else {
-                                        viewModel.deleteAttendanceLog(item.id)
+                                        val tempCal = Calendar.getInstance().apply {
+                                            set(Calendar.YEAR, yearValue)
+                                            set(Calendar.MONTH, currentMonthCal.get(Calendar.MONTH))
+                                            set(Calendar.DAY_OF_MONTH, dayNum)
+                                        }
+                                        
+                                        val dayOfWeekCode = when (tempCal.get(Calendar.DAY_OF_WEEK)) {
+                                            Calendar.MONDAY -> "Lu"
+                                            Calendar.TUESDAY -> "Ma"
+                                            Calendar.WEDNESDAY -> "Mi"
+                                            Calendar.THURSDAY -> "Ju"
+                                            Calendar.FRIDAY -> "Vi"
+                                            Calendar.SATURDAY -> "Sá"
+                                            else -> "Do"
+                                        }
+                                        
+                                        val isClassScheduled = subject.schedule.contains(dayOfWeekCode, ignoreCase = true)
+                                        
+                                        val logForDay = mergedLogs.find { log ->
+                                            val logDateClean = log.date.lowercase().replace(" (justificada)", "").trim()
+                                            val dayStrNoZero = dayNum.toString() + " " + SimpleDateFormat("MMM", Locale.getDefault()).format(tempCal.time).lowercase().replace(".", "")
+                                            val dayStrWithZero = String.format("%02d", dayNum) + " " + SimpleDateFormat("MMM", Locale.getDefault()).format(tempCal.time).lowercase().replace(".", "")
+                                            logDateClean.contains(dayStrNoZero) || logDateClean.contains(dayStrWithZero)
+                                        }
+                                        
+                                        val isJustified = logForDay != null && !logForDay.isPresent && logForDay.date.lowercase().contains("justificada")
+                                        
+                                        val circleColor = when {
+                                            logForDay != null && logForDay.isPresent -> DarkGreen
+                                            logForDay != null && !logForDay.isPresent && isJustified -> Color(0xFFFBC02D)
+                                            logForDay != null && !logForDay.isPresent -> Terracotta
+                                            isClassScheduled -> SlateGray.copy(alpha = 0.15f)
+                                            else -> Color.Transparent
+                                        }
+                                        
+                                        val textColor = when {
+                                            logForDay != null -> Color.White
+                                            isClassScheduled -> NavyBlue
+                                            else -> SlateGray.copy(alpha = 0.5f)
+                                        }
+                                        
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(circleColor)
+                                                .clickable {
+                                                    val formattedDate = SimpleDateFormat("dd MMM", Locale.getDefault()).format(tempCal.time)
+                                                    if (logForDay != null) {
+                                                        if (logForDay.isLegacy) {
+                                                            viewModel.deleteAbsence(logForDay.id)
+                                                        } else {
+                                                            viewModel.deleteAttendanceLog(logForDay.id)
+                                                        }
+                                                    } else {
+                                                        viewModel.registerAttendanceLog(subject.id, isPresent = true, dateStr = formattedDate)
+                                                    }
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "$dayNum",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = textColor
+                                            )
+                                        }
                                     }
-                                    true
                                 }
-                                else -> false
                             }
                         }
-                    )
+                    }
                     
-                    SwipeToDismissBox(
-                        state = dismissState,
-                        enableDismissFromStartToEnd = false,
-                        backgroundContent = {
-                            val color by animateColorAsState(
-                                when (dismissState.targetValue) {
-                                    SwipeToDismissBoxValue.EndToStart -> Terracotta
-                                    else -> Color.Transparent
-                                }
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(color, RoundedCornerShape(12.dp))
-                                    .padding(end = 16.dp),
-                                contentAlignment = Alignment.CenterEnd
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = Color.White)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().animateItem()
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        LegendItem(color = DarkGreen, label = "Asistido")
+                        LegendItem(color = Color(0xFFFBC02D), label = "Justificada")
+                        LegendItem(color = Terracotta, label = "Falta")
+                        LegendItem(color = SlateGray.copy(alpha = 0.15f), label = "Clase")
+                    }
+                }
+            }
+
+            // Bitácora Log Filter tab
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("Todo", "Asistencias", "Faltas").forEach { label ->
+                    val isSelected = filterTab == label
+                    Button(
+                        onClick = { filterTab = label },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isSelected) DarkGreen else SlateGray.copy(alpha = 0.1f)
+                        ),
+                        shape = RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Text(
+                            text = label,
+                            color = if (isSelected) Bone else NavyBlue,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (filteredLogs.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Ningún registro coincide con el filtro.", color = SlateGray, fontSize = 13.sp)
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    filteredLogs.forEach { item ->
+                        val hapticFeedback = LocalHapticFeedback.current
+                        val dismissState = rememberSwipeToDismissBoxState(
+                            confirmValueChange = { dismissValue ->
+                                when (dismissValue) {
+                                    SwipeToDismissBoxValue.EndToStart -> {
+                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        if (item.isLegacy) {
+                                            viewModel.deleteAbsence(item.id)
+                                        } else {
+                                            viewModel.deleteAttendanceLog(item.id)
+                                        }
+                                        true
+                                    }
+                                    else -> false
+                                }
+                            }
+                        )
+                        
+                        SwipeToDismissBox(
+                            state = dismissState,
+                            enableDismissFromStartToEnd = false,
+                            backgroundContent = {
+                                val color by animateColorAsState(
+                                    when (dismissState.targetValue) {
+                                        SwipeToDismissBoxValue.EndToStart -> Terracotta
+                                        else -> Color.Transparent
+                                    }
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(color, RoundedCornerShape(12.dp))
+                                        .padding(end = 16.dp),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = Color.White)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Bone)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        val isJustified = !item.isPresent && item.date.lowercase().contains("justificada")
+                                        val iconCol = when {
+                                            item.isPresent -> DarkGreen
+                                            isJustified -> Color(0xFFFBC02D)
+                                            else -> Terracotta
+                                        }
+                                        Icon(
+                                            imageVector = if (item.isPresent) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                            contentDescription = null,
+                                            tint = iconCol
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = if (item.isPresent) "Asistió: ${item.date}" else "Falta registrada: ${item.date}",
+                                            fontWeight = FontWeight.Bold,
+                                            color = NavyBlue,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Save session form
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.5.dp, Bone)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(text = "Registrar clase manual", style = MaterialTheme.typography.titleSmall, color = NavyBlue, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = manualDateInput,
+                            onValueChange = { manualDateInput = it },
+                            placeholder = { Text("Ej: 22 Jun") },
+                            label = { Text("Fecha") },
+                            modifier = Modifier.weight(1.2f),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
+                        )
+
+                        // Toggle status buttons
+                        Row(
+                            modifier = Modifier.weight(1.8f),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Button(
+                                onClick = { selectedStatusIsPresent = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (selectedStatusIsPresent) DarkGreen else SlateGray.copy(alpha = 0.1f)
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) {
+                                Text("Asistió", color = if (selectedStatusIsPresent) Bone else NavyBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = { selectedStatusIsPresent = false },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (!selectedStatusIsPresent) Terracotta else SlateGray.copy(alpha = 0.1f)
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) {
+                                Text("Faltó", color = if (!selectedStatusIsPresent) Bone else NavyBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = {
+                            val inputDate = manualDateInput.ifBlank {
+                                java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()).format(java.util.Date())
+                            }
+                            viewModel.registerAttendanceLog(subject.id, selectedStatusIsPresent, inputDate)
+                            manualDateInput = ""
+                        },
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Cargar clase registrada", color = Bone, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+        } else {
+            // PLANIFICADOR DE TAREAS / TO-DO LIST
+            val allTasks by viewModel.tasks.collectAsStateWithLifecycle(emptyList())
+            val subjectTasks = remember(allTasks, subject.id) {
+                allTasks.filter { it.subjectId == subject.id }
+            }
+            val pendingTasks = subjectTasks.filter { !it.isCompleted }
+            val completedTasks = subjectTasks.filter { it.isCompleted }
+
+            var taskTitleInput by remember { mutableStateOf("") }
+            var taskTypeSelected by remember { mutableStateOf("Tarea") } // "Tarea", "Laboratorio", "Proyecto", "Examen"
+            var taskDueDateInput by remember { mutableStateOf("") }
+
+            Text(
+                text = "ENTREGAS PENDIENTES (${pendingTasks.size})",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = NavyBlue,
+                letterSpacing = 0.5.sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            if (pendingTasks.isEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Bone)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        BuddyMascot(
+                            modifier = Modifier.size(56.dp),
+                            isHappy = true,
+                            mainColor = try { Color(android.graphics.Color.parseColor(subject.colorHex)) } catch(e: Exception) { DarkGreen }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "¡Al día por aquí!",
+                            fontWeight = FontWeight.Bold,
+                            color = NavyBlue,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            "No tienes tareas pendientes para esta materia.",
+                            color = SlateGray,
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    pendingTasks.forEach { task ->
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -626,24 +1022,197 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                             border = BorderStroke(1.dp, Bone)
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = if (item.isPresent) Icons.Default.CheckCircle else Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = if (item.isPresent) DarkGreen else Terracotta
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Checkbox(
+                                        checked = task.isCompleted,
+                                        onCheckedChange = { viewModel.toggleTask(task) },
+                                        colors = CheckboxDefaults.colors(checkedColor = DarkGreen)
                                     )
-                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Column {
+                                        Text(
+                                            text = task.title,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NavyBlue,
+                                            fontSize = 13.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            // Badge for Type
+                                            val badgeBg = when (task.type) {
+                                                "Laboratorio" -> Color(0xFFE0F7FA)
+                                                "Proyecto" -> Color(0xFFEDE7F6)
+                                                "Examen" -> Color(0xFFFFEBEE)
+                                                else -> Color(0xFFF1F5F9)
+                                            }
+                                            val badgeTxt = when (task.type) {
+                                                "Laboratorio" -> Color(0xFF006064)
+                                                "Proyecto" -> Color(0xFF311B92)
+                                                "Examen" -> Color(0xFFB71C1C)
+                                                else -> SlateGray
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(badgeBg)
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(task.type, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = badgeTxt)
+                                            }
+
+                                            // Due Date
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(10.dp), tint = SlateGray)
+                                                Spacer(modifier = Modifier.width(2.dp))
+                                                Text("Entrega: ${task.dueDate}", fontSize = 10.sp, color = SlateGray, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                                IconButton(onClick = { viewModel.deleteTask(task.id) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Eliminar tarea", tint = Terracotta, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ADD NEW TASK FORM
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.5.dp, Bone)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(text = "Nueva Entrega o Tarea", style = MaterialTheme.typography.titleSmall, color = NavyBlue, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    OutlinedTextField(
+                        value = taskTitleInput,
+                        onValueChange = { taskTitleInput = it },
+                        placeholder = { Text("Ej: Proyecto Final / Lab 3") },
+                        label = { Text("Título de la tarea") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Task type chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf("Tarea", "Laboratorio", "Proyecto", "Examen").forEach { type ->
+                            val isSelected = taskTypeSelected == type
+                            val chipBg = if (isSelected) DarkGreen else SlateGray.copy(alpha = 0.1f)
+                            val chipTxt = if (isSelected) Bone else NavyBlue
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(chipBg)
+                                    .clickable { taskTypeSelected = type }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(type, color = chipTxt, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = taskDueDateInput,
+                            onValueChange = { taskDueDateInput = it },
+                            placeholder = { Text("Ej: 28 Jun") },
+                            label = { Text("Fecha de Entrega") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
+                        )
+                        
+                        Button(
+                            onClick = {
+                                if (taskTitleInput.isNotBlank()) {
+                                    val finalDueDate = taskDueDateInput.ifBlank {
+                                        java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()).format(java.util.Date())
+                                    }
+                                    viewModel.addTask(subject.id, taskTitleInput, taskTypeSelected, finalDueDate)
+                                    taskTitleInput = ""
+                                    taskDueDateInput = ""
+                                }
+                            },
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Añadir", color = Bone, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+
+            // COMPLETED TASKS SECTION
+            if (completedTasks.isNotEmpty()) {
+                Text(
+                    text = "ENTREGAS COMPLETADAS (${completedTasks.size})",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = SlateGray,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    completedTasks.forEach { task ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.6f)),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Bone.copy(alpha = 0.6f))
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Checkbox(
+                                        checked = task.isCompleted,
+                                        onCheckedChange = { viewModel.toggleTask(task) },
+                                        colors = CheckboxDefaults.colors(checkedColor = SlateGray)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = if (item.isPresent) "Asistió: ${item.date}" else "Falta registrada: ${item.date}",
-                                        fontWeight = FontWeight.Bold,
-                                        color = NavyBlue
+                                        text = task.title,
+                                        fontWeight = FontWeight.Medium,
+                                        color = SlateGray,
+                                        fontSize = 13.sp,
+                                        style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough)
                                     )
+                                }
+                                IconButton(onClick = { viewModel.deleteTask(task.id) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Eliminar tarea", tint = Terracotta.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -651,78 +1220,13 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                 }
             }
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Save session form
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.5.dp, Bone)
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(text = "Registrar clase manual", style = MaterialTheme.typography.titleSmall, color = NavyBlue, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = manualDateInput,
-                        onValueChange = { manualDateInput = it },
-                        placeholder = { Text("Ej: 22 Jun") },
-                        label = { Text("Fecha") },
-                        modifier = Modifier.weight(1.2f),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DarkGreen, focusedLabelColor = DarkGreen)
-                    )
-
-                    // Toggle status buttons
-                    Row(
-                        modifier = Modifier.weight(1.8f),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Button(
-                            onClick = { selectedStatusIsPresent = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (selectedStatusIsPresent) DarkGreen else SlateGray.copy(alpha = 0.1f)
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f).height(48.dp)
-                        ) {
-                            Text("Asistió", color = if (selectedStatusIsPresent) Bone else NavyBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Button(
-                            onClick = { selectedStatusIsPresent = false },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (!selectedStatusIsPresent) Terracotta else SlateGray.copy(alpha = 0.1f)
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f).height(48.dp)
-                        ) {
-                            Text("Faltó", color = if (!selectedStatusIsPresent) Bone else NavyBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-                Button(
-                    onClick = {
-                        val inputDate = manualDateInput.ifBlank {
-                            java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()).format(java.util.Date())
-                        }
-                        viewModel.registerAttendanceLog(subject.id, selectedStatusIsPresent, inputDate)
-                        manualDateInput = ""
-                    },
-                    modifier = Modifier.fillMaxWidth().height(42.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Cargar clase registrada", color = Bone, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+@Composable
+fun LegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(color))
+        Text(label, fontSize = 10.sp, color = SlateGray, fontWeight = FontWeight.Bold)
     }
 }

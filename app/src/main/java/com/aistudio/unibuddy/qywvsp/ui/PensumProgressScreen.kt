@@ -72,7 +72,12 @@ fun Modifier.bounceClick(onClick: () -> Unit) = composed {
 @Composable
 fun PensumProgressScreen(viewModel: UniBuddyViewModel) {
     val passedSubjects by viewModel.passedSubjects.collectAsStateWithLifecycle()
-    val allSubjects = CurriculumData.industrialEngineering
+    val university by viewModel.userUniversity.collectAsStateWithLifecycle()
+    val career by viewModel.career.collectAsStateWithLifecycle()
+    
+    val allSubjects = remember(university, career) {
+        CurriculumData.getSubjectsFor(university.ifEmpty { "UNI" }, career.ifEmpty { "Ing. Industrial" })
+    }
     val totalSubjects = allSubjects.size
     val passedCount = passedSubjects.size
     val progressPercent = if (totalSubjects > 0) (passedCount.toFloat() / totalSubjects) * 100 else 0f
@@ -92,7 +97,7 @@ fun PensumProgressScreen(viewModel: UniBuddyViewModel) {
             .padding(16.dp)
     ) {
         Text("Mi Progreso", style = MaterialTheme.typography.headlineMedium, color = NavyBlue, fontWeight = FontWeight.Bold)
-        Text("Plan de Estudio: Ingeniería Industrial UNI", fontSize = 14.sp, color = DarkGray)
+        Text("Plan de Estudio: ${career.ifEmpty { "Ingeniería Industrial" }} - ${university.ifEmpty { "UNI" }}", fontSize = 14.sp, color = DarkGray)
         Spacer(modifier = Modifier.height(16.dp))
 
         // Progress Bar
@@ -138,7 +143,7 @@ fun PensumProgressScreen(viewModel: UniBuddyViewModel) {
                         modifier = Modifier.padding(bottom = 4.dp, top = 8.dp)
                     )
                 }
-                items(grouped[semester] ?: emptyList()) { subject ->
+                items(grouped[semester] ?: emptyList(), key = { it.code }) { subject ->
                     val isPassed = passedSubjects.contains(subject.code)
                     Row(
                         modifier = Modifier

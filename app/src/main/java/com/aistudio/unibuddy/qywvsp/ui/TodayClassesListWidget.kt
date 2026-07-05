@@ -25,7 +25,10 @@ import com.aistudio.unibuddy.qywvsp.ui.theme.*
 @Composable
 fun TodayClassesListWidget(
     subjects: List<Subject>,
-    currentDayCode: String
+    currentDayCode: String,
+    currentDateStr: String,
+    cancelledClasses: Set<String>,
+    onToggleCancelled: (Int) -> Unit
 ) {
     val todayClasses = subjects.filter { it.schedule.contains(currentDayCode, ignoreCase = true) }
         .sortedBy { 
@@ -63,34 +66,45 @@ fun TodayClassesListWidget(
                         val time = session?.time ?: ""
                         val room = session?.room ?: ""
                         
+                        val isCancelled = cancelledClasses.contains("${subject.id}_${currentDateStr}")
+
                         Row(
                             modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
                             horizontalArrangement = Arrangement.Start
                         ) {
                             // Timeline visual
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(32.dp)) {
-                                Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color(android.graphics.Color.parseColor(subject.colorHex))))
+                                Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(if (isCancelled) SlateGray else Color(android.graphics.Color.parseColor(subject.colorHex))))
                                 if (index < todayClasses.size - 1) {
                                     Box(modifier = Modifier.width(2.dp).fillMaxHeight().background(Bone))
                                 }
                             }
                             // Content
                             Column(modifier = Modifier.weight(1f).padding(bottom = if (index < todayClasses.size - 1) 16.dp else 0.dp)) {
-                                Text(text = time, color = NavyBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = (-3).dp))
+                                Text(text = time, color = if (isCancelled) SlateGray else NavyBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.offset(y = (-3).dp))
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                    colors = CardDefaults.cardColors(containerColor = if (isCancelled) Bone else Color(0xFFF8FAFC)),
                                     shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, Bone)
+                                    border = BorderStroke(1.dp, if (isCancelled) SlateGray.copy(alpha=0.5f) else Bone)
                                 ) {
                                     Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(text = subject.name, fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 14.sp)
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                            Text(text = subject.name, fontWeight = FontWeight.Bold, color = if (isCancelled) SlateGray else NavyBlue, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                            TextButton(
+                                                onClick = { onToggleCancelled(subject.id) },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(24.dp)
+                                            ) {
+                                                Text(if (isCancelled) "Restaurar" else "Cancelar Hoy", fontSize = 10.sp, color = if (isCancelled) DarkGreen else Terracotta)
+                                            }
+                                        }
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Default.Place, contentDescription = null, tint = SlateGray, modifier = Modifier.size(12.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text(text = room, color = SlateGray, fontSize = 12.sp)
+                                            Text(text = if (isCancelled) "Clase cancelada" else room, color = SlateGray, fontSize = 12.sp)
                                         }
                                     }
                                 }

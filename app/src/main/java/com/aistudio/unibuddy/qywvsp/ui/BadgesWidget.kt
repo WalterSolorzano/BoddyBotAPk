@@ -81,7 +81,7 @@ fun BadgesMiniWidget(viewModel: UniBuddyViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(horizontal = 4.dp)
                 ) {
-                    items(unlockedBadges.take(5)) { badge ->
+                    items(unlockedBadges.take(5), key = { it.id }) { badge ->
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
@@ -142,7 +142,7 @@ fun BadgesDetailsDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)
             ) {
-                items(badges) { badge ->
+                items(badges, key = { it.id }) { badge ->
                     val iconColor = if (badge.isUnlocked) DarkGreen else SlateGray
                     val bgTone = if (badge.isUnlocked) MintGreen.copy(alpha = 0.1f) else BackgroundGray.copy(alpha = 0.5f)
                     

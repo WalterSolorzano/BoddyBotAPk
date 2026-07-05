@@ -878,13 +878,31 @@ fun CartoonPixelLifebarWidget(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            val filledColor = when {
+                hpPercentage > 60 -> Color(0xFF00E676) // Healthy Green
+                hpPercentage > 30 -> Color(0xFFFFD600) // Warning Yellow
+                else -> Color(0xFFD50000) // Dangerous Red
+            }
+
             // Retro segment health bar
-            Text(
-                text = "BARRA DE VIDA ACADÉMICA:",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.LightGray
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "BATERÍA DE ESTUDIO (Vida Académica):",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.LightGray
+                )
+                Text(
+                    text = "$hpPercentage% HP",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = filledColor
+                )
+            }
             Spacer(modifier = Modifier.height(4.dp))
             
             // Outer container
@@ -896,12 +914,6 @@ fun CartoonPixelLifebarWidget(
                     .border(2.dp, Color.White, RoundedCornerShape(4.dp))
                     .padding(2.dp)
             ) {
-                // Segmented HP Bar
-                val filledColor = when {
-                    hpPercentage > 60 -> Color(0xFF00E676) // Healthy Green
-                    hpPercentage > 30 -> Color(0xFFFFD600) // Warning Yellow
-                    else -> Color(0xFFD50000) // Dangerous Red
-                }
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()

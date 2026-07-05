@@ -26,12 +26,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
-import com.aistudio.unibuddy.qywvsp.ui.*
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import com.aistudio.unibuddy.qywvsp.ui.UniBuddyViewModel
+import com.aistudio.unibuddy.qywvsp.ui.SemesterHistoryView
+import com.aistudio.unibuddy.qywvsp.ui.PresetDropdownField
 import com.aistudio.unibuddy.qywvsp.ui.components.*
 import com.aistudio.unibuddy.qywvsp.ui.theme.*
 import com.aistudio.unibuddy.qywvsp.data.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.Calendar
 
 @Composable
 fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit) {
@@ -47,6 +58,7 @@ fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit)
     var showHistoryDialog by remember { mutableStateOf(false) }
     var showPdfImportDialog by remember { mutableStateOf(false) }
     var showErrorDialog by remember { mutableStateOf(false) }
+    var showSemesterDialog by remember { mutableStateOf(false) }
 
     if (showHistoryDialog) {
         androidx.compose.ui.window.Dialog(
@@ -69,7 +81,11 @@ fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit)
                         Text("Historial de Semestres", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = NavyBlue)
                     }
                     Box(modifier = Modifier.weight(1f).padding(16.dp)) {
-                        SemesterHistoryView(viewModel = viewModel)
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            SemesterHistoryView(viewModel = viewModel)
+                            Spacer(modifier = Modifier.height(24.dp))
+                            FocusHistoryChart(viewModel = viewModel)
+                        }
                     }
                 }
             }
@@ -105,11 +121,11 @@ fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit)
             ConfigGridItem("Mascota", Icons.Default.Face, "Accesorios y Color") { showBuddyDialog = true },
             ConfigGridItem("Rutas", Icons.Default.Place, "Origen, Destino, GPS") { showRouteDialog = true },
             ConfigGridItem("Historial", Icons.Default.Menu, "Estadísticas pasadas") { showHistoryDialog = true },
-            ConfigGridItem("Académico", Icons.Default.DateRange, "Pensum, Semestre") { onNavigateToPensum() },
+            ConfigGridItem("Pensum", Icons.Default.DateRange, "Progreso de Carrera") { onNavigateToPensum() },
+            ConfigGridItem("Semestre", Icons.Default.DateRange, "Inicio, Notas, Feriados") { showSemesterDialog = true },
             ConfigGridItem("Importar PDF", Icons.Default.Info, "Historial de Notas") { showPdfImportDialog = true },
             ConfigGridItem("Insignias", Icons.Default.Star, "Logros y Medallas") { showBadgeDialog = true },
-            ConfigGridItem("Reporte Error", Icons.Default.Warning, "Telegram/Gmail") { showErrorDialog = true },
-            ConfigGridItem("Sistema", Icons.Default.Settings, "Backup, Reset") { showResetDialog = true }
+            ConfigGridItem("Sistema", Icons.Default.Settings, "Backup, Reset, Reportes") { showResetDialog = true }
         )
 
         LazyVerticalGrid(
@@ -160,7 +176,10 @@ fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit)
         BadgeDialog(viewModel) { showBadgeDialog = false }
     }
     if (showResetDialog) {
-        SystemSettingsDialog(viewModel) { showResetDialog = false }
+        SystemSettingsDialog(viewModel, onReportError = { showErrorDialog = true }) { showResetDialog = false }
+    }
+    if (showSemesterDialog) {
+        SemesterSettingsDialog(viewModel) { showSemesterDialog = false }
     }
     if (showBuddyDialog) {
         BuddyCustomizationDialog(viewModel) { showBuddyDialog = false }
@@ -170,7 +189,7 @@ fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit)
     }
 
     if (showErrorDialog) {
-        ErrorReportDialog { showErrorDialog = false }
+        ErrorReportDialog(viewModel = viewModel) { showErrorDialog = false }
     }
 }
 
@@ -181,14 +200,52 @@ fun ProfileDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
     val username by viewModel.username.collectAsStateWithLifecycle()
     val career by viewModel.career.collectAsStateWithLifecycle()
     
+    val photoUri by viewModel.profilePhotoUri.collectAsStateWithLifecycle()
+    
     var editingName by remember { mutableStateOf(username) }
     var editingCareer by remember { mutableStateOf(career) }
+    
+    val photoLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            viewModel.saveProfilePhoto(uri.toString())
+        }
+    }
     
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Mi Perfil", fontWeight = FontWeight.Bold, color = NavyBlue) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .size(90.dp)
+                        .clip(CircleShape)
+                        .background(BackgroundGray)
+                        .clickable { photoLauncher.launch("image/*") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (photoUri != null) {
+                        AsyncImage(
+                            model = photoUri,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.CameraAlt,
+                            contentDescription = null,
+                            tint = NavyBlue,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+                Text("Toca para cambiar foto", fontSize = 10.sp, color = SlateGray)
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
                 OutlinedTextField(
                     value = editingName,
                     onValueChange = { editingName = it },
@@ -294,7 +351,7 @@ fun RouteSettingsDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
                 PresetDropdownField(
                     label = "Origen Habitual",
                     value = editingOrigin,
-                    onValueChange = { editingOrigin = it },
+                    onValueChange = { newVal -> editingOrigin = newVal },
                     options = listOf("Ubicación actual (GPS)", "Casa", "Trabajo"),
                     readOnly = true
                 )
@@ -309,7 +366,7 @@ fun RouteSettingsDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
                 PresetDropdownField(
                     label = "Facultad Destino",
                     value = editingDestination,
-                    onValueChange = { editingDestination = it },
+                    onValueChange = { newVal -> editingDestination = newVal },
                     options = viewModel.universities.map { it.name },
                     readOnly = true
                 )
@@ -443,7 +500,7 @@ fun BuddyCustomizationDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit
 }
 
 @Composable
-fun SystemSettingsDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
+fun SystemSettingsDialog(viewModel: UniBuddyViewModel, onReportError: () -> Unit, onDismiss: () -> Unit) {
     val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
     val autoCheckinEnabled by viewModel.autoCheckinEnabled.collectAsStateWithLifecycle()
     val smartSilenceEnabled by viewModel.smartSilenceEnabled.collectAsStateWithLifecycle()
@@ -511,9 +568,19 @@ fun SystemSettingsDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
                         Text("Silencia el teléfono automáticamente cuando estás en horario de clase dentro del campus", fontSize = 11.sp, color = SlateGray)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
+                    val notificationManager = remember { context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager }
+                    val isPolicyGranted = remember { notificationManager.isNotificationPolicyAccessGranted }
                     Switch(
                         checked = smartSilenceEnabled,
-                        onCheckedChange = { viewModel.setSmartSilenceEnabled(it) }
+                        onCheckedChange = { isChecked ->
+                            if (isChecked && !isPolicyGranted) {
+                                val intent = android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                                context.startActivity(intent)
+                                android.widget.Toast.makeText(context, "Concede el permiso de 'No molestar' para usar esta función.", android.widget.Toast.LENGTH_LONG).show()
+                            } else {
+                                viewModel.setSmartSilenceEnabled(isChecked)
+                            }
+                        }
                     )
                 }
 
@@ -587,7 +654,23 @@ fun SystemSettingsDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
                     Text(errorMessage!!, color = ProRed, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
 
-                Divider(color = Color.LightGray.copy(alpha = 0.5f), thickness = 1.dp)
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f), thickness = 1.dp)
+
+                // Report Error section
+                Text("Soporte y Ayuda", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = NavyBlue)
+                Text("¿Encontraste algún problema o bug? Envía un reporte detallado a nuestro equipo de soporte.", fontSize = 11.sp, color = SlateGray)
+                Button(
+                    onClick = {
+                        onDismiss()
+                        onReportError()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = NavyBlue)
+                ) {
+                    Text("Reportar un Error", fontSize = 12.sp)
+                }
+
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f), thickness = 1.dp)
 
                 // 3. System Reset
                 Text("Zona Peligrosa", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Terracotta)
@@ -633,6 +716,7 @@ fun PdfImportDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var isProcessing by remember { mutableStateOf(false) }
     var resultMessage by remember { mutableStateOf<String?>(null) }
+    var parsedSubjectsToConfirm by remember { mutableStateOf<List<com.aistudio.unibuddy.qywvsp.data.HistorialParser.ParsedSubject>>(emptyList()) }
     
     val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
@@ -641,14 +725,30 @@ fun PdfImportDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
             isProcessing = true
             scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 try {
-                    // MOCK PDF PROCESSING TO AVOID DEPENDENCY ISSUE
-                    kotlinx.coroutines.delay(1000)
-                    val mockSubjects = listOf(
-                        com.aistudio.unibuddy.qywvsp.data.HistorialParser.ParsedSubject("CMAT181", "MATE I", 4.0, 85.0, com.aistudio.unibuddy.qywvsp.data.AssessmentStatus.NF_R, "1M1-IND"),
-                        com.aistudio.unibuddy.qywvsp.data.HistorialParser.ParsedSubject("CFIS021", "FISICA I", 4.0, 70.0, com.aistudio.unibuddy.qywvsp.data.AssessmentStatus.NF_R, "1M1-IND")
-                    )
-                    viewModel.importAcademicRecords(mockSubjects)
-                    resultMessage = "Se importaron ${mockSubjects.size} materias (Mocked)."
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                    if (inputStream != null) {
+                        val reader = com.itextpdf.text.pdf.PdfReader(inputStream)
+                        val numberOfPages = reader.numberOfPages
+                        val textBuilder = StringBuilder()
+                        for (i in 1..numberOfPages) {
+                            val pageText = com.itextpdf.text.pdf.parser.PdfTextExtractor.getTextFromPage(reader, i)
+                            textBuilder.append(pageText).append("\n")
+                        }
+                        val text = textBuilder.toString()
+                        reader.close()
+                        inputStream.close()
+                        
+                        val parser = com.aistudio.unibuddy.qywvsp.data.HistorialParser()
+                        val parsedSubjects = parser.parsePdfText(text)
+                        
+                        if (parsedSubjects.isNotEmpty()) {
+                            parsedSubjectsToConfirm = parsedSubjects
+                        } else {
+                            resultMessage = "No se encontraron registros académicos con el formato estándar en este PDF."
+                        }
+                    } else {
+                        resultMessage = "Error al abrir el archivo PDF."
+                    }
                 } catch (e: Exception) {
                     e.printStackTrace()
                     resultMessage = "Error al procesar el PDF: ${e.message}"
@@ -663,35 +763,72 @@ fun PdfImportDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text("Importar Historial (PDF)", fontWeight = FontWeight.Bold, color = NavyBlue) },
         text = {
-            Column {
-                Text("Puedes importar tu historial de notas oficial de la universidad para actualizar tu perfil y estadísticas.", style = MaterialTheme.typography.bodyMedium)
-                Spacer(modifier = Modifier.height(16.dp))
-                if (isProcessing) {
-                    CircularProgressIndicator(color = ProBlue, modifier = Modifier.align(Alignment.CenterHorizontally))
-                }
-                resultMessage?.let {
-                    Text(it, color = if (it.startsWith("Error")) Color.Red else DarkGreen, fontWeight = FontWeight.Bold)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (parsedSubjectsToConfirm.isNotEmpty()) {
+                    Text("Se capturaron ${parsedSubjectsToConfirm.size} materias. Confirma para guardar:", fontWeight = FontWeight.Bold, color = DarkGreen)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
+                        items(parsedSubjectsToConfirm) { sub ->
+                            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = Bone)) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text(sub.name, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = NavyBlue)
+                                    Text("Grupo: ${sub.group} | Nota: ${sub.grade} | Créditos: ${sub.credits} | Estado: ${sub.status.name}", fontSize = 11.sp, color = SlateGray)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text("Puedes importar tu historial de notas oficial de la universidad para actualizar tu perfil y estadísticas.", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if (isProcessing) {
+                        CircularProgressIndicator(color = ProBlue, modifier = Modifier.align(Alignment.CenterHorizontally))
+                    }
+                    resultMessage?.let {
+                        Text(it, color = if (it.startsWith("Error") || it.startsWith("No")) Color.Red else DarkGreen, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(
-                onClick = { launcher.launch("application/pdf") },
-                colors = ButtonDefaults.buttonColors(containerColor = ProBlue),
-                enabled = !isProcessing
-            ) {
-                Text("Seleccionar PDF", color = Color.White)
+            if (parsedSubjectsToConfirm.isNotEmpty()) {
+                Button(
+                    onClick = {
+                        viewModel.importAcademicRecords(parsedSubjectsToConfirm)
+                        resultMessage = "¡Guardado exitosamente!"
+                        parsedSubjectsToConfirm = emptyList()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ProBlue)
+                ) {
+                    Text("Confirmar y Guardar", color = Color.White)
+                }
+            } else {
+                Button(
+                    onClick = { launcher.launch("application/pdf") },
+                    colors = ButtonDefaults.buttonColors(containerColor = ProBlue),
+                    enabled = !isProcessing
+                ) {
+                    Text("Seleccionar PDF", color = Color.White)
+                }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cerrar", color = SlateGray) }
+            TextButton(onClick = {
+                if (parsedSubjectsToConfirm.isNotEmpty()) {
+                    parsedSubjectsToConfirm = emptyList()
+                    resultMessage = null
+                } else {
+                    onDismiss()
+                }
+            }) {
+                Text(if (parsedSubjectsToConfirm.isNotEmpty()) "Cancelar" else "Cerrar", color = SlateGray)
+            }
         }
     )
 }
 
 @Suppress("DEPRECATION")
 @Composable
-fun ErrorReportDialog(onDismiss: () -> Unit) {
+fun ErrorReportDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isSending by remember { mutableStateOf(false) }
@@ -717,7 +854,7 @@ fun ErrorReportDialog(onDismiss: () -> Unit) {
                 Button(
                     onClick = {
                         isSending = true
-                        val logData = "UniBuddy App Crash Log\nDevice: ${android.os.Build.MODEL}\nOS: ${android.os.Build.VERSION.RELEASE}\nError: Ejemplo de error de prueba."
+                        val logData = viewModel.getSystemLog()
                         
                         // Enviar vía OkHttp a Telegram
                         scope.launch(Dispatchers.IO) {
@@ -767,4 +904,328 @@ fun ErrorReportDialog(onDismiss: () -> Unit) {
             }
         }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SemesterSettingsDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
+    val semesterStartDate by viewModel.semesterStartDate.collectAsStateWithLifecycle()
+    val currentWeek by viewModel.currentWeekOfSemester.collectAsStateWithLifecycle()
+    val defaultExamPercent by viewModel.defaultExamPercentage.collectAsStateWithLifecycle()
+    val defaultTestPercent by viewModel.defaultTestPercentage.collectAsStateWithLifecycle()
+
+    val dateFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
+    val initialDateStr = semesterStartDate?.let { dateFormatter.format(java.util.Date(it)) } ?: "No establecida"
+
+    var selectedDateStr by remember { mutableStateOf(initialDateStr) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    
+    var examPercentInput by remember { mutableStateOf(defaultExamPercent.toInt().toString()) }
+    var testPercentInput by remember { mutableStateOf(defaultTestPercent.toInt().toString()) }
+
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = semesterStartDate ?: Calendar.getInstance().timeInMillis
+    )
+
+    var showSuspiciousBuddyDialog by remember { mutableStateOf(false) }
+    var failedSubjectsList by remember { mutableStateOf(emptyList<String>()) }
+    val coroutineScope = rememberCoroutineScope()
+
+    if (showDatePicker) {
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDatePicker = false
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val cal = Calendar.getInstance().apply { timeInMillis = millis }
+                        selectedDateStr = dateFormatter.format(cal.time)
+                        viewModel.updateSemesterStartDate(millis)
+                    }
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancelar")
+                }
+            }
+        ) {
+            androidx.compose.material3.DatePicker(state = datePickerState)
+        }
+    }
+
+    if (showSuspiciousBuddyDialog) {
+        AlertDialog(
+            onDismissRequest = { showSuspiciousBuddyDialog = false },
+            title = { Text("¿Pasaste con esas faltas?", fontWeight = FontWeight.Bold, color = Terracotta) },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "UniBuddy te mira sospechoso...",
+                        fontWeight = FontWeight.Bold,
+                        color = SlateGray
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Excediste tu margen de faltas en: ${failedSubjectsList.joinToString(", ")}. Si la dejas así, reprobarás automáticamente. ¿De verdad el profe te pasó?",
+                        fontSize = 14.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.endSemester(forcePassAbsences = true)
+                        showSuspiciousBuddyDialog = false
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NavyBlue)
+                ) {
+                    Text("Sí, ¡me salvaron!", color = Color.White)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        viewModel.endSemester(forcePassAbsences = false)
+                        showSuspiciousBuddyDialog = false
+                        onDismiss()
+                    }
+                ) {
+                    Text("No, la reprobé :(", color = Terracotta)
+                }
+            }
+        )
+    }
+
+    var showHolidayPicker by remember { mutableStateOf(false) }
+    val holidayPickerState = rememberDatePickerState(
+        initialSelectedDateMillis = Calendar.getInstance().timeInMillis
+    )
+
+    if (showHolidayPicker) {
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { showHolidayPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    showHolidayPicker = false
+                    holidayPickerState.selectedDateMillis?.let { millis ->
+                        viewModel.addCustomHoliday(millis)
+                    }
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHolidayPicker = false }) {
+                    Text("Cancelar")
+                }
+            }
+        ) {
+            androidx.compose.material3.DatePicker(state = holidayPickerState)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Ajustes del Semestre", fontWeight = FontWeight.Bold, color = NavyBlue) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("Calendario Académico (Nicaragua)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = NavyBlue)
+                
+                // Semester Start Date
+                OutlinedTextField(
+                    value = selectedDateStr,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Fecha de inicio del semestre") },
+                    trailingIcon = {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(Icons.Default.DateRange, contentDescription = "Seleccionar Fecha", tint = NavyBlue)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NavyBlue, focusedLabelColor = NavyBlue)
+                )
+
+                Text(
+                    text = "Semana actual calculada: ${if (currentWeek > 0) "Semana $currentWeek" else "Vacaciones"}\n" +
+                           "*(Feriados de Nicaragua como Semana Santa y Fiestas Patrias son descontados automáticamente del conteo lectivo).*",
+                    fontSize = 11.sp,
+                    color = SlateGray,
+                    fontWeight = FontWeight.Medium
+                )
+
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f), thickness = 1.dp)
+
+                Text("Feriados y Días Libres", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = NavyBlue)
+                Text("Agrega manualmente días libres que no estén en el calendario nacional (ej. aniversario de la universidad o asueto local).", fontSize = 11.sp, color = SlateGray)
+                
+                Button(
+                    onClick = { showHolidayPicker = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = NavyBlue.copy(alpha = 0.8f))
+                ) {
+                    Text("Agregar Día Libre", color = Color.White, fontSize = 12.sp)
+                }
+                
+                val customHols by viewModel.customHolidays.collectAsStateWithLifecycle()
+                if (customHols.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        customHols.forEach { ms ->
+                            val cal = Calendar.getInstance().apply { timeInMillis = ms }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().background(Bone, RoundedCornerShape(8.dp)).padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(dateFormatter.format(cal.time), fontSize = 13.sp, color = NavyBlue)
+                                IconButton(onClick = { viewModel.removeCustomHoliday(ms) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Eliminar", tint = Terracotta)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f), thickness = 1.dp)
+
+                Text("Valores por Defecto para Evaluaciones", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = NavyBlue)
+                Text("Configura los valores de puntaje estándar para exámenes y trabajos:", fontSize = 11.sp, color = SlateGray)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = examPercentInput,
+                        onValueChange = { input ->
+                            val filtered = input.filter { it.isDigit() }
+                            examPercentInput = filtered
+                            filtered.toDoubleOrNull()?.let { viewModel.saveDefaultExamPercentage(it) }
+                        },
+                        label = { Text("Exámenes (pts)") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NavyBlue, focusedLabelColor = NavyBlue)
+                    )
+
+                    OutlinedTextField(
+                        value = testPercentInput,
+                        onValueChange = { input ->
+                            val filtered = input.filter { it.isDigit() }
+                            testPercentInput = filtered
+                            filtered.toDoubleOrNull()?.let { viewModel.saveDefaultTestPercentage(it) }
+                        },
+                        label = { Text("Tareas (pts)") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NavyBlue, focusedLabelColor = NavyBlue)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            val failed = viewModel.checkFailedByAbsences().first()
+                            if (failed.isNotEmpty()) {
+                                failedSubjectsList = failed
+                                showSuspiciousBuddyDialog = true
+                            } else {
+                                viewModel.endSemester(forcePassAbsences = false)
+                                onDismiss()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Terracotta),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Terminar Semestre Actual", color = Color.White)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = NavyBlue)
+            ) {
+                Text("Guardar", color = Bone)
+            }
+        },
+        containerColor = Color.White
+    )
+}
+
+@Composable
+fun FocusHistoryChart(viewModel: UniBuddyViewModel) {
+    val sessionsHistoryJson by viewModel.focusSessionsHistoryJson.collectAsStateWithLifecycle()
+    val sessions = remember(sessionsHistoryJson) {
+        val list = mutableListOf<Pair<String, Int>>()
+        try {
+            val arr = org.json.JSONArray(sessionsHistoryJson)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                list.add(Pair(obj.getString("date"), obj.getInt("duration")))
+            }
+        } catch (e: Exception) {}
+        list
+    }
+
+    if (sessions.isEmpty()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Text("Aún no hay historial de concentración.", modifier = Modifier.padding(16.dp), fontSize = 12.sp, color = SlateGray)
+        }
+        return
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Historial Visual de Concentración", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = NavyBlue)
+            Text("Minutos estudiados por día", fontSize = 12.sp, color = SlateGray)
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Group by day (taking only last 7 days)
+            val aggregated = sessions.groupBy { it.first }.mapValues { it.value.sumOf { s -> s.second } }.toList().takeLast(7)
+            val maxMins = aggregated.maxOfOrNull { it.second } ?: 1
+            
+            Row(
+                modifier = Modifier.fillMaxWidth().height(150.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                aggregated.forEach { (date, mins) ->
+                    val heightRatio = (mins.toFloat() / maxMins).coerceIn(0.1f, 1f)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom, modifier = Modifier.fillMaxHeight()) {
+                        Text("$mins", fontSize = 10.sp, color = ProBlue, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(30.dp)
+                                .fillMaxHeight(heightRatio)
+                                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                                .background(ProBlue)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(date.take(5), fontSize = 10.sp, color = SlateGray) // "dd/MM"
+                    }
+                }
+            }
+        }
+    }
 }
