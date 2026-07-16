@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.aistudio.unibuddy.qywvsp.data.Task
 import com.aistudio.unibuddy.qywvsp.data.Subject
@@ -68,10 +69,12 @@ fun DashboardScreen(
     val tripRecords by viewModel.tripRecords.collectAsStateWithLifecycle()
     val arrivalMarginPref by viewModel.arrivalMarginPreference.collectAsStateWithLifecycle()
     val attendanceLogs by viewModel.attendanceLogs.collectAsStateWithLifecycle()
+    val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
     val assessments by viewModel.assessments.collectAsStateWithLifecycle()
     val weatherDescription by viewModel.weatherDescription.collectAsStateWithLifecycle()
     val locationBasedTravelTime by viewModel.locationBasedTravelMinutes.collectAsStateWithLifecycle()
     val currentDistanceToCollege by viewModel.currentDistanceToCollege.collectAsStateWithLifecycle()
+    val isOutOfRange by viewModel.isOutOfRange.collectAsStateWithLifecycle()
     val subjectImportanceMap by viewModel.subjectImportanceMap.collectAsStateWithLifecycle()
     val tasks by viewModel.tasks.collectAsStateWithLifecycle(emptyList())
     val currentWeek by viewModel.currentWeekOfSemester.collectAsStateWithLifecycle()
@@ -113,6 +116,36 @@ fun DashboardScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // OTA Update Banner
+        updateInfo?.let { info ->
+            val localCtx = androidx.compose.ui.platform.LocalContext.current
+            if (info.isUpdateAvailable) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = ProBlue.copy(alpha = 0.1f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = ProBlue, modifier = Modifier.size(32.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("¡Nueva versión disponible!", fontWeight = FontWeight.Bold, color = ProBlue, fontSize = 16.sp)
+                            Text("Versión ${info.versionName}: ${info.releaseNotes}", color = SlateGray, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        Button(
+                            onClick = { UpdateManager.downloadAndInstallUpdate(localCtx, info.apkUrl, info.versionName) },
+                            colors = ButtonDefaults.buttonColors(containerColor = ProBlue)
+                        ) {
+                            Text("Actualizar", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
         // Dashboard Header
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -209,7 +242,7 @@ fun DashboardScreen(
         val isHoliday = viewModel.isNicaraguaHoliday(System.currentTimeMillis())
 
         if (activeTab == "hoy") {
-            AdviceCarouselWidget(subjects, assessments)
+            AdviceCarouselWidget(subjects, assessments, onNavigateToDetails)
             
             if (currentWeek >= 14) {
                 val examsPlanned = assessments.any { it.name.contains("Examen", ignoreCase = true) }
@@ -317,7 +350,8 @@ fun DashboardScreen(
                     totalAbsencesCount = nextSubjectAbsencesCount,
                     isExamMode = isNextSubjectExamMode,
                     importanceLevel = nextSubjectImportance,
-                    estimatedTravelMinutes = estimatedTravelMins
+                    estimatedTravelMinutes = estimatedTravelMins,
+                    isOutOfRange = isOutOfRange
                 )
             }
 
@@ -362,17 +396,17 @@ fun DashboardScreen(
                 if (tomorrowClasses.isNotEmpty() || examTomorrow) {
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2E)),
+                        colors = CardDefaults.cardColors(containerColor = NavyBlue),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Resumen Nocturno", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("Resumen Nocturno", color = Amber, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             Spacer(modifier = Modifier.height(8.dp))
                             if (examTomorrow) {
-                                Text("¡Atención! Mañana tienes evaluaciones pendientes.", color = Color(0xFFFF8A80), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text("¡Atención! Mañana tienes evaluaciones pendientes.", color = Terracotta, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                             }
                             if (tomorrowClasses.isNotEmpty()) {
-                                Text("Clases de mañana: ${tomorrowClasses.joinToString(", ") { it.name.take(15) }}", color = Color(0xFFE2E8F0), fontSize = 13.sp)
+                                Text("Clases de mañana: ${tomorrowClasses.joinToString(", ") { it.name.take(15) }}", color = Bone, fontSize = 13.sp)
                             }
                         }
                     }
@@ -393,25 +427,31 @@ fun DashboardScreen(
             if (missingGrades.isNotEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
-                    border = BorderStroke(1.dp, Color(0xFFFFB74D))
+                    colors = CardDefaults.cardColors(containerColor = Amber.copy(alpha=0.1f)),
+                    border = BorderStroke(1.dp, Amber)
                 ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFF57C00), modifier = Modifier.size(24.dp))
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Terracotta, modifier = Modifier.size(24.dp))
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Evaluaciones sin nota", fontWeight = FontWeight.Bold, color = Color(0xFFE65100), fontSize = 14.sp)
-                            Text("Ya pasó la fecha de: ${missingGrades.joinToString(", ") { it.name }}. ¿Ya tienes la nota? Regístrala.", fontSize = 12.sp, color = Color(0xFFF57C00))
+                            Text("Evaluaciones sin nota", fontWeight = FontWeight.Bold, color = Terracotta, fontSize = 14.sp)
+                            Text("Ya pasó la fecha de: ${missingGrades.joinToString(", ") { it.name }}. ¿Ya tienes la nota? Regístrala.", fontSize = 12.sp, color = Terracotta)
                         }
                     }
                 }
             }
 
+            val calculatedStress = (assessments.count { it.grade == null } * 15f + absences.size * 5f).coerceIn(0f, 100f)
+            val stressStatusText = when {
+                calculatedStress > 70f -> "Crítico"
+                calculatedStress > 40f -> "Elevado"
+                else -> "Estable"
+            }
             WellnessWidget(
                 upcomingExamsCount = assessments.count { it.grade == null },
                 absencesCount = absences.size,
-                calculatedStress = 50f,
-                statusText = "Estable"
+                calculatedStress = calculatedStress,
+                statusText = stressStatusText
             )
 
             UpcomingAssessmentsWidget(
@@ -427,9 +467,10 @@ fun DashboardScreen(
                 onNavigateToSubject = { onNavigateToDetails(it) }
             )
 
+            val currentWeighted = assessments.filter { it.grade != null }.sumOf { (it.grade!! / 100.0) * it.percentage }
             GradesHistoryWidget(
                 assessments = assessments.filter { it.grade != null }.takeLast(5),
-                currentWeighted = 0.0
+                currentWeighted = currentWeighted
             )
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -447,7 +488,7 @@ fun DashboardScreen(
             
             Spacer(modifier = Modifier.height(8.dp))
 
-            InteractivePomodoroWidget()
+            InteractivePomodoroWidget(viewModel)
         } else if (activeTab == "trayecto") {
             val isLocationAvailable by viewModel.isLocationAvailable.collectAsStateWithLifecycle()
             val currentDistance = currentDistanceToCollege
@@ -458,6 +499,7 @@ fun DashboardScreen(
                 subjects = subjects,
                 baseTravelTime = if (locationBasedTravelTime > 0) locationBasedTravelTime else baseTravelTime,
                 distanceKm = currentDistanceToCollege ?: 0.0,
+                isOutOfRange = isOutOfRange,
                 onConfigureRoute = onConfigureRoute,
                 weatherDescription = weatherDescription,
                 isRaining = isRaining
@@ -465,6 +507,7 @@ fun DashboardScreen(
 
             GPSAndStopwatchWidget(
                 currentDistanceToCollege = currentDistance,
+                isOutOfRange = isOutOfRange,
                 locationBasedTravelMinutes = estimatedTravelMins,
                 baseTravelTimeSource = baseTravelTime,
                 isTripActive = isTripActive,
@@ -485,7 +528,7 @@ fun DashboardScreen(
 }
 
 @Composable
-fun AdviceCarouselWidget(subjects: List<com.aistudio.unibuddy.qywvsp.data.Subject>, assessments: List<com.aistudio.unibuddy.qywvsp.data.Assessment>) {
+fun AdviceCarouselWidget(subjects: List<com.aistudio.unibuddy.qywvsp.data.Subject>, assessments: List<com.aistudio.unibuddy.qywvsp.data.Assessment>, onSubjectClick: (Int) -> Unit) {
     var currentIndex by remember { mutableStateOf(0) }
     
     val tips = remember(subjects, assessments) {
@@ -526,9 +569,14 @@ fun AdviceCarouselWidget(subjects: List<com.aistudio.unibuddy.qywvsp.data.Subjec
         }
     }
 
+    val currentTip = tips[currentIndex]
+    val mentionedSubject = subjects.find { currentTip.contains(it.name) }
+    
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)), // Light blue
+        modifier = Modifier.fillMaxWidth().clickable(enabled = mentionedSubject != null) {
+            mentionedSubject?.let { onSubjectClick(it.id) }
+        },
+        colors = CardDefaults.cardColors(containerColor = ProBlue.copy(alpha=0.05f)), // Light blue
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, ProBlue.copy(alpha = 0.2f))
     ) {
@@ -540,7 +588,7 @@ fun AdviceCarouselWidget(subjects: List<com.aistudio.unibuddy.qywvsp.data.Subjec
             // Mascot
             com.aistudio.unibuddy.qywvsp.ui.components.BuddyMascot(
                 pose = "greeting",
-                mainColor = Color(0xFF4F46E5),
+                mainColor = ProBlue,
                 modifier = Modifier.size(50.dp).clip(CircleShape).background(Color.White)
             )
             
@@ -567,52 +615,15 @@ fun AdviceCarouselWidget(subjects: List<com.aistudio.unibuddy.qywvsp.data.Subjec
                 }
             }
             
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(Color.White)
-                        .border(1.dp, Color.LightGray.copy(alpha = 0.5f), CircleShape)
-                        .clickable {
-                            currentIndex = if (currentIndex > 0) currentIndex - 1 else tips.size - 1
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Rounded.ChevronLeft, contentDescription = null, modifier = Modifier.size(16.dp), tint = NavyBlue)
-                }
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(Color.White)
-                        .border(1.dp, Color.LightGray.copy(alpha = 0.5f), CircleShape)
-                        .clickable {
-                            currentIndex = (currentIndex + 1) % tips.size
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp), tint = NavyBlue)
-                }
-            }
+            
         }
     }
 }
 
 @Composable
-fun InteractivePomodoroWidget() {
-    var isTimerActive by remember { mutableStateOf(false) }
-    var secondsLeft by remember { mutableStateOf(1500) } // 25 minutes
-    
-    LaunchedEffect(isTimerActive) {
-        if (isTimerActive) {
-            while (secondsLeft > 0) {
-                kotlinx.coroutines.delay(1000L)
-                secondsLeft--
-            }
-            isTimerActive = false
-        }
-    }
+fun InteractivePomodoroWidget(viewModel: com.aistudio.unibuddy.qywvsp.ui.UniBuddyViewModel) {
+    val isTimerActive by viewModel.isPomodoroActive.collectAsStateWithLifecycle()
+    val secondsLeft by viewModel.pomodoroSecondsLeft.collectAsStateWithLifecycle()
 
     val minutes = secondsLeft / 60
     val seconds = secondsLeft % 60
@@ -636,9 +647,9 @@ fun InteractivePomodoroWidget() {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)), // Light orange
+        colors = CardDefaults.cardColors(containerColor = Amber.copy(alpha=0.05f)), // Light orange
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, Color(0xFFF97316).copy(alpha = 0.2f))
+        border = BorderStroke(1.dp, Amber.copy(alpha = 0.2f))
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -651,7 +662,7 @@ fun InteractivePomodoroWidget() {
                         text = "RELOJ POMODORO DE ESTUDIO",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFFC2410C),
+                        color = Amber,
                         letterSpacing = 0.5.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
@@ -659,7 +670,7 @@ fun InteractivePomodoroWidget() {
                         Icon(
                             imageVector = Icons.Rounded.Timer,
                             contentDescription = null,
-                            tint = Color(0xFFF97316),
+                            tint = Amber,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -679,7 +690,7 @@ fun InteractivePomodoroWidget() {
                 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Button(
-                        onClick = { isTimerActive = !isTimerActive },
+                        onClick = { viewModel.togglePomodoro() },
                         colors = ButtonDefaults.buttonColors(containerColor = if (isTimerActive) Terracotta else DarkGreen),
                         shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
@@ -689,10 +700,7 @@ fun InteractivePomodoroWidget() {
                     }
                     
                     Button(
-                        onClick = {
-                            isTimerActive = false
-                            secondsLeft = 1500
-                        },
+                        onClick = { viewModel.resetPomodoro() },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.LightGray.copy(alpha = 0.4f)),
                         shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp),
@@ -763,7 +771,7 @@ fun BuddyMascotRoomWidget(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
+        colors = CardDefaults.cardColors(containerColor = BackgroundGray),
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.3f))
     ) {
@@ -796,7 +804,7 @@ fun BuddyMascotRoomWidget(
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(Color(0xFFE2E8F0))
+                        .background(Bone)
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
                     Text("Logros: ${unlockedDecorations.size}/5", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = SlateGray)
@@ -809,7 +817,7 @@ fun BuddyMascotRoomWidget(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(90.dp)
-                    .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                    .background(Bone, RoundedCornerShape(12.dp))
                     .padding(8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -1010,15 +1018,15 @@ fun UpcomingTasksWidget(
                                         
                                         // Badge for type
                                         val badgeBg = when (task.type) {
-                                            "Laboratorio" -> Color(0xFFE0F7FA)
-                                            "Proyecto" -> Color(0xFFEDE7F6)
-                                            "Examen" -> Color(0xFFFFEBEE)
-                                            else -> Color(0xFFF1F5F9)
+                                            "Laboratorio" -> MintGreen.copy(alpha=0.1f)
+                                            "Proyecto" -> ProBlue.copy(alpha=0.1f)
+                                            "Examen" -> Terracotta.copy(alpha=0.1f)
+                                            else -> BackgroundGray
                                         }
                                         val badgeTxt = when (task.type) {
-                                            "Laboratorio" -> Color(0xFF006064)
-                                            "Proyecto" -> Color(0xFF311B92)
-                                            "Examen" -> Color(0xFFB71C1C)
+                                            "Laboratorio" -> MintGreen
+                                            "Proyecto" -> ProBlue
+                                            "Examen" -> Terracotta
                                             else -> SlateGray
                                         }
                                         Box(
@@ -1066,23 +1074,23 @@ fun UpcomingAssessmentsWidget(
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F0FE)),
+        colors = CardDefaults.cardColors(containerColor = ProBlue.copy(alpha=0.05f)),
         shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, Color(0xFF1967D2).copy(alpha = 0.3f))
+        border = BorderStroke(1.dp, ProBlue.copy(alpha = 0.3f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(
                     imageVector = Icons.Default.DateRange,
                     contentDescription = null,
-                    tint = Color(0xFF1967D2),
+                    tint = ProBlue,
                     modifier = Modifier.size(20.dp)
                 )
                 Text(
                     text = "SEMANA DE EXÁMENES",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF1967D2),
+                    color = ProBlue,
                     letterSpacing = 0.5.sp
                 )
             }

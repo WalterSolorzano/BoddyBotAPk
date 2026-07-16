@@ -28,7 +28,8 @@ fun HeroNextClassCard(
     totalAbsencesCount: Int,
     isExamMode: Boolean,
     importanceLevel: String,
-    estimatedTravelMinutes: Int
+    estimatedTravelMinutes: Int,
+    isOutOfRange: Boolean = false
 ) {
     if (subject == null) {
         Card(
@@ -65,47 +66,52 @@ fun HeroNextClassCard(
 
     if (parsedStartTime != null) {
         val (startHour, startMin) = parsedStartTime
-        
-        // Departure time = start time - travel time - 10 mins buffer
         val totalStartMins = startHour * 60 + startMin
-        var departureMins = totalStartMins - estimatedTravelMinutes - 10
-        if (departureMins < 0) {
-            departureMins += 24 * 60
-        }
-        
-        val depHour = (departureMins / 60) % 24
-        val depMin = departureMins % 60
-        departureTimeStr = formatTime12Hour(depHour, depMin)
-
-        // Compare with current local time
         val now = Calendar.getInstance()
         val nowMins = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
         
-        when {
-            nowMins > totalStartMins -> {
-                isLate = true
-                val minsPast = nowMins - totalStartMins
-                statusText = "Clase iniciada hace $minsPast min"
-                statusColor = Terracotta
-                statusBgColor = Terracotta.copy(alpha = 0.1f)
+        if (isOutOfRange && (totalStartMins - nowMins) < estimatedTravelMinutes) {
+            statusText = "Uff no llegas si sales ahora"
+            statusColor = Terracotta
+            statusBgColor = Terracotta.copy(alpha = 0.1f)
+            departureTimeStr = "--:--"
+        } else {
+            // Departure time = start time - travel time - 10 mins buffer
+            var departureMins = totalStartMins - estimatedTravelMinutes - 10
+            if (departureMins < 0) {
+                departureMins += 24 * 60
             }
-            nowMins > departureMins -> {
-                isLate = true
-                val minsDelayed = nowMins - departureMins
-                statusText = "Deberías estar en camino (atraso de $minsDelayed min)"
-                statusColor = Terracotta
-                statusBgColor = Terracotta.copy(alpha = 0.1f)
-            }
-            nowMins == departureMins -> {
-                statusText = "¡Debes salir ahora mismo!"
-                statusColor = Color(0xFFD97706) // Darker Amber
-                statusBgColor = Color(0xFFFEF3C7)
-            }
-            else -> {
-                val minsLeft = departureMins - nowMins
-                statusText = "A tiempo (sugerido salir en $minsLeft min)"
-                statusColor = DarkGreen
-                statusBgColor = MintGreen.copy(alpha = 0.1f)
+            
+            val depHour = (departureMins / 60) % 24
+            val depMin = departureMins % 60
+            departureTimeStr = formatTime12Hour(depHour, depMin)
+
+            when {
+                nowMins > totalStartMins -> {
+                    isLate = true
+                    val minsPast = nowMins - totalStartMins
+                    statusText = "Clase iniciada hace $minsPast min"
+                    statusColor = Terracotta
+                    statusBgColor = Terracotta.copy(alpha = 0.1f)
+                }
+                nowMins > departureMins -> {
+                    isLate = true
+                    val minsDelayed = nowMins - departureMins
+                    statusText = "Deberías estar en camino (atraso de $minsDelayed min)"
+                    statusColor = Terracotta
+                    statusBgColor = Terracotta.copy(alpha = 0.1f)
+                }
+                nowMins == departureMins -> {
+                    statusText = "¡Debes salir ahora mismo!"
+                    statusColor = Color(0xFFD97706) // Darker Amber
+                    statusBgColor = Color(0xFFFEF3C7)
+                }
+                else -> {
+                    val minsLeft = departureMins - nowMins
+                    statusText = "A tiempo (sugerido salir en $minsLeft min)"
+                    statusColor = DarkGreen
+                    statusBgColor = MintGreen.copy(alpha = 0.1f)
+                }
             }
         }
     }
@@ -268,7 +274,7 @@ fun HeroNextClassCard(
                     Spacer(modifier = Modifier.height(6.dp))
                     
                     Text(
-                        text = "Trayecto estimado de $estimatedTravelMinutes min de puerta a puerta.",
+                        text = if (isOutOfRange) "Trayecto ultra largo ($estimatedTravelMinutes min). Verifica tu ubicación." else "Trayecto estimado de $estimatedTravelMinutes min de puerta a puerta.",
                         fontSize = 12.sp,
                         color = SlateGray,
                         lineHeight = 15.sp

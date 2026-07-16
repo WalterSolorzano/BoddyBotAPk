@@ -61,8 +61,8 @@ class TamagotchiWidget : GlanceAppWidget() {
         }
 
         // Color palette matching the gorgeous night blue theme of AcademicWeatherWidget
-        val themeBgColor = Color(0xFF1A237E) // Beautiful Indigo Navy
-        val textColorSecondary = Color(0xFF94A3B8) // Slate Gray for secondary details
+        val themeBgColor = Color(0xFF001D36) // Beautiful Indigo Navy
+        val textColorSecondary = Color(0xFF44474E) // Slate Gray for secondary details
         val textWhite = Color.White
 
         provideContent {
@@ -117,8 +117,8 @@ class TamagotchiWidget : GlanceAppWidget() {
                                 .defaultWeight()
                                 .height(8.dp)
                                 .cornerRadius(4.dp),
-                            color = ColorProvider(Color(0xFFEF4444)), // Vibrant HP bar red
-                            backgroundColor = ColorProvider(Color(0xFF475569)) // Dark Slate BG
+                            color = ColorProvider(Color(0xFFBA1A1A)), // Vibrant HP bar red
+                            backgroundColor = ColorProvider(Color(0xFF44474E)) // Dark Slate BG
                         )
                         
                         Spacer(modifier = GlanceModifier.width(6.dp))
@@ -126,7 +126,7 @@ class TamagotchiWidget : GlanceAppWidget() {
                         Text(
                             text = "${attendanceRate.roundToInt()}%",
                             style = TextStyle(
-                                color = ColorProvider(Color(0xFFFCA5A5)), // Rose light color
+                                color = ColorProvider(Color(0xFFF7F9FF)), // Rose light color
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )

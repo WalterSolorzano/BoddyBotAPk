@@ -32,6 +32,7 @@ fun GPSAndStopwatchWidget(
     currentDistanceToCollege: Double?,
     locationBasedTravelMinutes: Int,
     baseTravelTimeSource: Int,
+    isOutOfRange: Boolean,
     isTripActive: Boolean,
     tripElapsedSeconds: Int,
     onRequestGPS: () -> Unit,
@@ -109,17 +110,18 @@ fun GPSAndStopwatchWidget(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "$locationBasedTravelMinutes min",
-                        fontSize = 20.sp,
+                        text = if (isOutOfRange) "Fuera del Rango Académico\n(Modo Vacaciones)" else "$locationBasedTravelMinutes min",
+                        fontSize = if (isOutOfRange) 12.sp else 20.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Right,
                         fontWeight = FontWeight.Black,
-                        color = if (currentDistanceToCollege != null && currentDistanceToCollege > 100.0) Terracotta else DarkGreen
+                        color = if (isOutOfRange) Terracotta else DarkGreen
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            val isTooFar = currentDistanceToCollege != null && currentDistanceToCollege > 100.0
+            val isTooFar = isOutOfRange
 
             Row(
                 modifier = Modifier

@@ -55,7 +55,7 @@ object NotificationHelper {
         }
     }
 
-    fun sendNextClassNotification(context: Context, subjectId: Int, destinationName: String, title: String, message: String) {
+    fun sendNextClassNotification(context: Context, subjectId: Int, destinationName: String, title: String, message: String, isCritical: Boolean = false) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         }
@@ -88,18 +88,25 @@ object NotificationHelper {
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
 
+        val colorHex = if (isCritical) "#BA1A1A" else "#F97316"
+        val mascotMessage = if (isCritical) "$message (ಠ_ಠ)" else "$message (•‿•)"
+        
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle(title)
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setContentText(mascotMessage)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(mascotMessage))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setColor(android.graphics.Color.parseColor("#F97316")) // Amber
+            .setColor(android.graphics.Color.parseColor(colorHex))
             .setAutoCancel(true)
-            .setLights(android.graphics.Color.parseColor("#F97316"), 1000, 1000)
+            .setLights(android.graphics.Color.parseColor(colorHex), 1000, 1000)
             .addAction(android.R.drawable.ic_menu_today, "Marcar Asistencia", attendPendingIntent)
             .addAction(android.R.drawable.ic_menu_send, "Avisar Retraso", latePendingIntent)
+            
+        if (isCritical) {
+            builder.setColorized(true)
+        }
 
         with(NotificationManagerCompat.from(context)) {
             try {

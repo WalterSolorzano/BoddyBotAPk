@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.aistudio.unibuddy.qywvsp.data.*
+import com.aistudio.unibuddy.qywvsp.ui.UpdateManager
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -31,8 +32,12 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
 
     private val _isInitialized = MutableStateFlow(false)
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
+    
+    private val _updateInfo = MutableStateFlow<UpdateManager.UpdateInfo?>(null)
+    val updateInfo: StateFlow<UpdateManager.UpdateInfo?> = _updateInfo.asStateFlow()
 
     init {
+        checkForUpdates()
         val db = AppDatabase.getDatabase(application)
         repository = UniBuddyRepository(db)
         
@@ -102,6 +107,24 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+
+    fun checkForUpdates() {
+        viewModelScope.launch {
+            val info = UpdateManager.checkForUpdates()
+            if (info != null) {
+                _updateInfo.value = info
+                // Aplicar configuraciones dinámicas si hay alguna (Opción 2)
+                info.dynamicConfig?.forEach { (key, value) ->
+                    repository.saveSetting(key, value)
+                }
+            }
+        }
+    }
+
+    private fun notifyWidgets() {
+        com.aistudio.unibuddy.qywvsp.ui.widget.WidgetUpdater.updateAllWidgets(getApplication())
+    }
+
     private suspend fun checkAndTriggerProactiveNotifications() {
         // Evaluate today's classes and exams for notifications
         val sdf = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
@@ -159,6 +182,11 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                         val diffMinutes = startTotalMin - currentTotalMin
                         val travelMins = _locationBasedTravelMinutes.value ?: _baseTravelTime.value
                         val destName = _destination.value
+                        
+                        val allAbsences = repository.attendanceLogs.first().filter { it.subjectId == sub.id && !it.isPresent }
+                        val maxAbs = sub.totalClasses - kotlin.math.ceil(sub.totalClasses * (sub.requiredAttendancePercent / 100.0)).toInt()
+                        val remainingAbsences = (maxAbs - allAbsences.size).coerceAtLeast(0)
+                        val isAbsencesCritical = remainingAbsences <= 2
 
                         // Reminder 1: "Tiempo Antes" (Alert 15 to 45 mins before class start)
                         if (diffMinutes in 15..45) {
@@ -169,8 +197,9 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                                     getApplication(),
                                     sub.id,
                                     destName,
-                                    "Prepárate: Clase de ${sub.name}",
-                                    "Empieza en $diffMinutes min (a las ${session.time}). Tiempo estimado de viaje: $travelMins min."
+                                    if (isAbsencesCritical) "¡URGENTE! Clase de ${sub.name}" else "Prepárate: Clase de ${sub.name}",
+                                    if (isAbsencesCritical) "Empieza en $diffMinutes min. ¡Casi repruebas por faltas, no faltes!" else "Empieza en $diffMinutes min (a las ${session.time}). Tiempo estimado de viaje: $travelMins min.",
+                                    isCritical = isAbsencesCritical
                                 )
                             }
                         }
@@ -189,8 +218,9 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                                         getApplication(),
                                         sub.id,
                                         destName,
-                                        "¡Hora de Entrada a ${sub.name}!",
-                                        "Tu clase ya está iniciando (hora: ${session.time}). Toca aquí para registrar asistencia en UniBuddy."
+                                        if (isAbsencesCritical) "¡ASISTE AHORA! ${sub.name}" else "¡Hora de Entrada a ${sub.name}!",
+                                        if (isAbsencesCritical) "¡Últimas faltas! Registra asistencia." else "Tu clase ya está iniciando (hora: ${session.time}). Toca aquí para registrar asistencia.",
+                                        isCritical = isAbsencesCritical
                                     )
                                 }
                             }
@@ -276,6 +306,38 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Real-time trip status state & stopwatch controller
+        // Pomodoro State
+    private val _pomodoroSecondsLeft = MutableStateFlow(1500)
+    val pomodoroSecondsLeft: StateFlow<Int> = _pomodoroSecondsLeft.asStateFlow()
+
+    private val _isPomodoroActive = MutableStateFlow(false)
+    val isPomodoroActive: StateFlow<Boolean> = _isPomodoroActive.asStateFlow()
+
+    private var pomodoroJob: kotlinx.coroutines.Job? = null
+
+    fun togglePomodoro() {
+        if (_isPomodoroActive.value) {
+            _isPomodoroActive.value = false
+            pomodoroJob?.cancel()
+        } else {
+            if (_pomodoroSecondsLeft.value <= 0) _pomodoroSecondsLeft.value = 1500
+            _isPomodoroActive.value = true
+            pomodoroJob = viewModelScope.launch {
+                while (_pomodoroSecondsLeft.value > 0 && _isPomodoroActive.value) {
+                    kotlinx.coroutines.delay(1000L)
+                    _pomodoroSecondsLeft.value -= 1
+                }
+                _isPomodoroActive.value = false
+            }
+        }
+    }
+
+    fun resetPomodoro() {
+        _isPomodoroActive.value = false
+        pomodoroJob?.cancel()
+        _pomodoroSecondsLeft.value = 1500
+    }
+
     private val _isTripActive = MutableStateFlow(false)
     val isTripActive: StateFlow<Boolean> = _isTripActive.asStateFlow()
 
@@ -693,6 +755,9 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
 
     private val _locationBasedTravelMinutes = MutableStateFlow(30)
     val locationBasedTravelMinutes: StateFlow<Int> = _locationBasedTravelMinutes.asStateFlow()
+    
+    private val _isOutOfRange = MutableStateFlow(false)
+    val isOutOfRange: StateFlow<Boolean> = _isOutOfRange.asStateFlow()
 
     private val _currentLocationName = MutableStateFlow("Buscando...")
     val currentLocationName: StateFlow<String> = _currentLocationName.asStateFlow()
@@ -766,25 +831,40 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 // If no saved setting, try to get from selected university campus
                 if (targetLat == null || targetLon == null) {
                     val uniCoords = getSelectedUniversityCoords()
-                    targetLat = uniCoords?.first ?: 12.1156 // Default to Managua if everything fails
-                    targetLon = uniCoords?.second ?: -86.2369
+                    targetLat = uniCoords?.first
+                    targetLon = uniCoords?.second
                 }
                 
-                val distance = calculateDistance(lat, lon, targetLat, targetLon)
-                _currentDistanceToCollege.value = distance
-                
-                // If within 1.5 km (accommodating GPS errors), consider it "En la universidad"
-                if (distance <= 1.5) {
-                    _currentLocationName.value = "En la universidad"
+                if (targetLat != null && targetLon != null) {
+                    val distance = calculateDistance(lat, lon, targetLat!!, targetLon!!)
+                    _currentDistanceToCollege.value = distance
                     
-                    if (_autoCheckinEnabled.value && !isNicaraguaHoliday(System.currentTimeMillis())) {
-                        autoCheckinToCurrentClass()
+                    // If within 1.5 km (accommodating GPS errors), consider it "En la universidad"
+                    if (distance <= 1.5) {
+                        _currentLocationName.value = "En la universidad"
+                        
+                        if (_autoCheckinEnabled.value && !isNicaraguaHoliday(System.currentTimeMillis())) {
+                            autoCheckinToCurrentClass()
+                        }
                     }
+                    
+                    // Check if user is out of range (>100km)
+                    val outOfRange = distance > 50.0
+                    _isOutOfRange.value = outOfRange
+                    
+                    // Estimate travel time: 3.5 mins per km + 12 mins buffer.
+                    val mins = if (outOfRange) 0 else (distance * 3.5).toInt() + 12
+                    _locationBasedTravelMinutes.value = mins
+                    
+                    // Save to Room for widgets
+                    viewModelScope.launch {
+                        repository.saveSetting("widget_out_of_range", outOfRange.toString())
+                        repository.saveSetting("widget_travel_time", mins.toString())
+                    }
+                } else {
+                    _currentDistanceToCollege.value = null
+                    _locationBasedTravelMinutes.value = _baseTravelTime.value
                 }
-                
-                // Estimate travel time: 3.5 mins per km + 12 mins buffer.
-                val estimatedMins = (distance * 3.5).toInt() + 12
-                _locationBasedTravelMinutes.value = estimatedMins
                 
                 checkAndTriggerProactiveNotifications()
             }
@@ -976,6 +1056,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             val newXp = _buddyXp.value + xp
             _buddyXp.value = newXp
             repository.saveSetting("buddy_xp", newXp.toString())
+            notifyWidgets()
         }
     }
 
@@ -1180,13 +1261,15 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             for (i in 1..5) {
                 repository.insertAssessment(Assessment(subjectId = subjectId, name = "C2: Tarea $i", grade = null, percentage = testP))
             }
-        }
+                notifyWidgets()
+}
     }
 
     fun updateSubject(subject: Subject) {
         viewModelScope.launch {
             repository.updateSubject(subject)
-        }
+                notifyWidgets()
+}
     }
 
     fun deleteSubject(subject: Subject) {
@@ -1201,7 +1284,8 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             allAbsences.forEach { repository.deleteAbsenceById(it.id) }
             
             repository.deleteSubject(subject)
-        }
+                notifyWidgets()
+}
     }
 
     fun registerAbsence(subjectId: Int, dateStr: String? = null) {
@@ -1210,16 +1294,19 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             repository.insertAbsence(Absence(subjectId = subjectId, date = date))
             // Increment streak or update list
             _weeklyStreak.value = _weeklyStreak.value + 1
-        }
+                notifyWidgets()
+}
     }
 
     fun deleteAbsence(absenceId: Int) {
         viewModelScope.launch {
             repository.deleteAbsenceById(absenceId)
+            notifyWidgets()
             if (_weeklyStreak.value > 0) {
                 _weeklyStreak.value = _weeklyStreak.value - 1
             }
-        }
+                notifyWidgets()
+}
     }
 
     fun getAbsencesForSubject(subjectId: Int): Flow<List<Absence>> {
@@ -1239,31 +1326,39 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 return@launch
             }
             repository.insertAssessment(Assessment(subjectId = subjectId, name = name, grade = grade, percentage = percentage, examDate = examDate))
-        }
+            notifyWidgets()
+                notifyWidgets()
+}
     }
 
     fun deleteAssessment(assessmentId: Int) {
         viewModelScope.launch {
             repository.deleteAssessmentById(assessmentId)
-        }
+            notifyWidgets()
+                notifyWidgets()
+}
     }
 
     fun addTask(subjectId: Int, title: String, type: String, dueDate: String) {
         viewModelScope.launch {
             repository.insertTask(Task(subjectId = subjectId, title = title, type = type, dueDate = dueDate))
-        }
+                notifyWidgets()
+}
     }
 
     fun toggleTask(task: Task) {
         viewModelScope.launch {
             repository.updateTask(task.copy(isCompleted = !task.isCompleted))
-        }
+            notifyWidgets()
+                notifyWidgets()
+}
     }
 
     fun deleteTask(taskId: Int) {
         viewModelScope.launch {
             repository.deleteTaskById(taskId)
-        }
+                notifyWidgets()
+}
     }
 
     fun recordTripRealTime(minutes: Int) {
@@ -1364,7 +1459,8 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 }
                 NotificationHelper.sendNotification(getApplication(), title, description)
             }
-        }
+                notifyWidgets()
+}
     }
 
     private var lastInsertedLogId: Long? = null
@@ -1388,7 +1484,8 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 }
             }
             lastInsertedLogId = null
-        }
+                notifyWidgets()
+}
     }
 
     fun deleteAttendanceLog(logId: Int) {
@@ -1409,7 +1506,8 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
             }
-        }
+                notifyWidgets()
+}
     }
 
     fun getLogsForSubject(subjectId: Int): Flow<List<AttendanceLog>> {
@@ -1616,6 +1714,9 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         }
     }
 }
+
+
+    
 
 class UniBuddyViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
