@@ -119,37 +119,41 @@ fun DashboardScreen(
     val photoUri by viewModel.profilePhotoUri.collectAsStateWithLifecycle()
 
     // 1. Filter and sort today's classes with parity check
-    val todayClasses = remember(subjects, currentDayCode, isEvenWeek) {
-        subjects.filter { it.schedule.contains(currentDayCode, ignoreCase = true) }
-            .mapNotNull { sub ->
-                val session = sub.sessions.firstOrNull { it.day.equals(currentDayCode, ignoreCase = true) }
-                if (session != null) {
-                    val freq = session.safeFrequency
-                    val matchesParity = when (freq) {
-                        "Semanas Pares" -> isEvenWeek
-                        "Semanas Impares" -> !isEvenWeek
-                        else -> true
-                    }
-                    if (matchesParity) {
-                        val parsed = com.aistudio.unibuddy.qywvsp.ui.parseStartTime(session.time)
-                        if (parsed != null) {
-                            val (h, m) = parsed
-                            Triple(sub, session, h * 60 + m)
+    val todayClasses by remember {
+        derivedStateOf {
+            subjects.filter { it.schedule.contains(currentDayCode, ignoreCase = true) }
+                .mapNotNull { sub ->
+                    val session = sub.sessions.firstOrNull { it.day.equals(currentDayCode, ignoreCase = true) }
+                    if (session != null) {
+                        val freq = session.safeFrequency
+                        val matchesParity = when (freq) {
+                            "Semanas Pares" -> isEvenWeek
+                            "Semanas Impares" -> !isEvenWeek
+                            else -> true
+                        }
+                        if (matchesParity) {
+                            val parsed = com.aistudio.unibuddy.qywvsp.ui.parseStartTime(session.time)
+                            if (parsed != null) {
+                                val (h, m) = parsed
+                                Triple(sub, session, h * 60 + m)
+                            } else null
                         } else null
                     } else null
-                } else null
-            }.sortedBy { it.third }
+                }.sortedBy { it.third }
+        }
     }
 
     // 2. Select the next active class today
-    val nextClassInfo = remember(todayClasses) {
-        val now = Calendar.getInstance()
-        val nowMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-        
-        // First find a class that hasn't finished yet (assuming 90 min class duration)
-        todayClasses.firstOrNull { (_, _, startMinutes) ->
-            nowMinutes < startMinutes + 90
-        } ?: todayClasses.firstOrNull() // fallback to first class if all are in past
+    val nextClassInfo by remember {
+        derivedStateOf {
+            val now = Calendar.getInstance()
+            val nowMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+            
+            // First find a class that hasn't finished yet (assuming 90 min class duration)
+            todayClasses.firstOrNull { (_, _, startMinutes) ->
+                nowMinutes < startMinutes + 90
+            } ?: todayClasses.firstOrNull() // fallback to first class if all are in past
+        }
     }
 
     val nextSubject = nextClassInfo?.first

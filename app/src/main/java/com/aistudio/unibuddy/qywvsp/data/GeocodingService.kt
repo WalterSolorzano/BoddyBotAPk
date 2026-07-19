@@ -106,32 +106,11 @@ object GeocodingServiceClient {
      * Searches for a location by text query.
      * Integrates Google Geocoding API if key is present; falls back to live free-lookup if not.
      */
-    suspend fun searchLocation(query: String, googleMapsApiKey: String? = null): List<GeocodingResult> {
+    suspend fun searchLocation(query: String): List<GeocodingResult> {
         if (query.isBlank()) return emptyList()
         val queryWithCountry = if (query.contains("Nicaragua", ignoreCase = true)) query else "$query, Nicaragua"
         return try {
-            if (!googleMapsApiKey.isNullOrBlank()) {
-                val response = api.searchGoogle(
-                    url = "https://maps.googleapis.com/maps/api/geocode/json",
-                    address = queryWithCountry,
-                    key = googleMapsApiKey
-                )
-                if (response.status == "OK") {
-                    response.results.map {
-                        GeocodingResult(
-                            placeId = null,
-                            displayName = it.formattedAddress,
-                            lat = it.geometry.location.lat.toString(),
-                            lon = it.geometry.location.lng.toString()
-                        )
-                    }
-                } else {
-                    // Fallback to Nominatim on non-OK Google response
-                    api.searchNominatim(query = queryWithCountry)
-                }
-            } else {
-                api.searchNominatim(query = queryWithCountry)
-            }
+            api.searchNominatim(query = queryWithCountry)
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()

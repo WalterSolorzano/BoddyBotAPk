@@ -2371,14 +2371,16 @@ fun UpcomingAssessmentsWidget(
     subjects: List<com.aistudio.unibuddy.qywvsp.data.Subject>,
     onNavigateToSubject: (Int) -> Unit
 ) {
-    val pendingAssessments = remember(assessments) {
-        val format = java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-        assessments.filter { it.grade == null && it.examDate.isNotBlank() }
-            .sortedBy { 
-                try { format.parse(it.examDate)?.time ?: Long.MAX_VALUE } 
-                catch (e: Exception) { Long.MAX_VALUE }
-            }
-            .take(5)
+    val pendingAssessments by remember {
+        derivedStateOf {
+            val format = java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            assessments.filter { it.grade == null && it.examDate.isNotBlank() }
+                .sortedBy { 
+                    try { format.parse(it.examDate)?.time ?: Long.MAX_VALUE } 
+                    catch (e: Exception) { Long.MAX_VALUE }
+                }
+                .take(5)
+        }
     }
 
     if (pendingAssessments.isEmpty()) return

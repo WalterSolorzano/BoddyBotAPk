@@ -60,3 +60,57 @@ fun getSubjectInitials(name: String): String {
     val firstWord = words[0]
     return if (firstWord.length <= 3) firstWord.uppercase() else firstWord.take(3).uppercase()
 }
+
+// Helper parsers and calculations
+fun parseSingleTime(timeStr: String): Pair<Int, Int>? {
+    try {
+        val lower = timeStr.lowercase().replace(".", "").replace(" ", "")
+        val isPm = lower.contains("pm")
+        val isAm = lower.contains("am")
+        
+        val digitsAndColon = lower.replace(Regex("[^0-9:]"), "")
+        if (digitsAndColon.contains(":")) {
+            val parts = digitsAndColon.split(":")
+            if (parts.size >= 2) {
+                var hour = parts[0].toIntOrNull() ?: return null
+                val min = parts[1].toIntOrNull() ?: 0
+                if (isPm && hour < 12) hour += 12
+                if (isAm && hour == 12) hour = 0
+                return Pair(hour, min)
+            }
+        } else {
+            val digitsOnly = lower.replace(Regex("[^0-9]"), "")
+            var hour = digitsOnly.toIntOrNull() ?: return null
+            val min = 0
+            if (isPm && hour < 12) hour += 12
+            if (isAm && hour == 12) hour = 0
+            return Pair(hour, min)
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return null
+}
+
+fun parseStartTime(timeStr: String): Pair<Int, Int>? {
+    val firstPart = timeStr.substringBefore("-").trim()
+    return parseSingleTime(firstPart)
+}
+
+fun parseTimeRange(timeRangeStr: String): Pair<Pair<Int, Int>, Pair<Int, Int>>? {
+    try {
+        val parts = timeRangeStr.split("-")
+        if (parts.size == 2) {
+            val start = parseSingleTime(parts[0])
+            val end = parseSingleTime(parts[1])
+            if (start != null && end != null) {
+                return Pair(start, end)
+            }
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return null
+}
+
+

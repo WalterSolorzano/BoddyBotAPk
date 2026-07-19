@@ -53,7 +53,6 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 repository.getSetting("user_university")?.let { _userUniversity.value = it }
                 repository.getSetting("buddy_accessory")?.let { _buddyAccessory.value = it }
                 repository.getSetting("buddy_color")?.let { _buddyColor.value = it }
-                repository.getSetting("google_maps_api_key")?.let { _googleMapsApiKey.value = it }
                 repository.getSetting("weekly_streak_count")?.let { _weeklyStreak.value = it.toIntOrNull() ?: 0 }
                 try { repository.getSetting("onboarding_completed")?.let { _isOnboardingCompleted.value = it.toBoolean() } } catch(e: Exception) {}
                 try { repository.getSetting("dark_mode")?.let { _isDarkMode.value = it.toBoolean() } } catch(e: Exception) {}
@@ -1489,9 +1488,6 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         """.trimIndent()
     }
 
-    private val _googleMapsApiKey = MutableStateFlow("")
-    val googleMapsApiKey: StateFlow<String> = _googleMapsApiKey.asStateFlow()
-
     private val _isOnboardingCompleted = MutableStateFlow(false)
     val isOnboardingCompleted: StateFlow<Boolean> = _isOnboardingCompleted.asStateFlow()
 
@@ -1937,7 +1933,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             }
             _isSearchingLocations.value = true
             try {
-                val results = GeocodingServiceClient.searchLocation(query.trim(), _googleMapsApiKey.value)
+                val results = GeocodingServiceClient.searchLocation(query.trim())
                 _locationSearchResults.value = results
             } catch (e: Exception) {
                 _locationSearchResults.value = emptyList()
@@ -1949,13 +1945,6 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
 
     fun clearLocationSearchResults() {
         _locationSearchResults.value = emptyList()
-    }
-
-    fun saveGoogleMapsApiKey(key: String) {
-        viewModelScope.launch {
-            _googleMapsApiKey.value = key
-            repository.saveSetting("google_maps_api_key", key)
-        }
     }
 
     // Modern Attendance Log properties & triggers
@@ -2072,7 +2061,6 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             saveUsername("Estudiante")
             saveRoute("Casa", "Facultad")
             saveBaseTravelTime(25)
-            saveGoogleMapsApiKey("")
             _isRaining.value = false
             setWeeklyStreak(0)
             _passedSubjects.value = emptySet()
