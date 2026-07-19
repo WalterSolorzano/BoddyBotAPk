@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -460,88 +461,64 @@ fun UniBuddySalvavidasDialog(
                 )
 
                 if (subjects.isEmpty()) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
-                        modifier = Modifier.fillMaxWidth()
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp)
                     ) {
+                        BuddyMascot(
+                            modifier = Modifier.size(90.dp),
+                            pose = "sleeping"
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Aun no registras asignaturas. Registralas desde el panel principal.",
+                            text = "Aún no registramos nada",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NavyBlue
+                        )
+                        Text(
+                            text = "Registra tus asignaturas y notas en el panel principal para proyectar tus promedios.",
                             fontSize = 11.sp,
                             color = SlateGray,
-                            modifier = Modifier.padding(14.dp),
-                            textAlign = TextAlign.Center
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp)
                         )
                     }
                 } else {
-                    // SWIPEABLE / NAVIGATION CAROUSEL CONTROLLER
+                    // HORIZONTAL SUBJECT SELECTOR CHIPS
+                    val chipScrollState = rememberScrollState()
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                            .horizontalScroll(chipScrollState)
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = { if (currentIndex > 0) selectedSubjectIndex-- },
-                            enabled = currentIndex > 0
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.ChevronLeft,
-                                contentDescription = "Anterior",
-                                tint = if (currentIndex > 0) mainColor else SlateGray.copy(alpha = 0.5f)
-                            )
-                        }
-
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "Asignatura",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateGray
-                            )
-                            Text(
-                                text = "${currentIndex + 1} de ${subjects.size}",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = NavyBlue
-                            )
-                        }
-
-                        IconButton(
-                            onClick = { if (currentIndex < subjects.lastIndex) selectedSubjectIndex++ },
-                            enabled = currentIndex < subjects.lastIndex
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.ChevronRight,
-                                contentDescription = "Siguiente",
-                                tint = if (currentIndex < subjects.lastIndex) mainColor else SlateGray.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-
-                    // Dot Indicator Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        subjects.forEachIndexed { index, _ ->
+                        subjects.forEachIndexed { index, sub ->
                             val isSelected = index == currentIndex
-                            val width by animateDpAsState(
-                                targetValue = if (isSelected) 16.dp else 6.dp,
-                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-                                label = "dot_width"
-                            )
-                            val color = if (isSelected) mainColor else Color(0xFFCBD5E1)
+                            val pillBg = if (isSelected) mainColor.copy(alpha = 0.12f) else Color(0xFFF1F5F9)
+                            val pillBorder = if (isSelected) mainColor.copy(alpha = 0.3f) else Color.Transparent
+                            val pillText = if (isSelected) mainColor else SlateGray
+                            
                             Box(
                                 modifier = Modifier
-                                    .padding(horizontal = 3.dp)
-                                    .height(6.dp)
-                                    .width(width)
-                                    .clip(CircleShape)
-                                    .background(color)
-                            )
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(pillBg)
+                                    .border(1.dp, pillBorder, RoundedCornerShape(12.dp))
+                                    .clickable { selectedSubjectIndex = index }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = sub.name,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = pillText
+                                )
+                            }
                         }
                     }
 
@@ -602,6 +579,25 @@ fun UniBuddySalvavidasDialog(
                         val isAlreadyPassed = accumulatedScore >= passingGrade
                         val isImpossible = accumulatedScore + remainingPercentage < passingGrade
 
+                        var showBreakdown by remember(targetIndex) { mutableStateOf(false) }
+
+                        val urgencyColor = when {
+                            isAlreadyPassed -> StatusGreen
+                            isImpossible -> Terracotta
+                            !hasGrades -> SlateGray
+                            requiredAvgOnPending > 85.0 -> Terracotta
+                            totalPredictedFinalScore >= passingGrade + 5.0 -> StatusGreen
+                            else -> StatusAmber
+                        }
+                        val urgencyLabel = when {
+                            isAlreadyPassed -> "Aprobado"
+                            isImpossible -> "Convocatoria"
+                            !hasGrades -> "Sin Notas"
+                            requiredAvgOnPending > 85.0 -> "Peligro: Exigencia Alta"
+                            totalPredictedFinalScore >= passingGrade + 5.0 -> "Favorable"
+                            else -> "Ajustado"
+                        }
+
                         Card(
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Bone),
@@ -634,33 +630,17 @@ fun UniBuddySalvavidasDialog(
                                         )
                                     }
 
-                                    val isShort = hasGrades && (totalPredictedFinalScore < passingGrade)
-                                    val badgeColor = when {
-                                        isAlreadyPassed -> StatusGreen
-                                        isImpossible -> Terracotta
-                                        !hasGrades -> SlateGray
-                                        isShort -> StatusAmber
-                                        else -> ProBlue
-                                    }
-                                    val badgeLabel = when {
-                                        isAlreadyPassed -> "Aprobado"
-                                        isImpossible -> "Convocatoria"
-                                        !hasGrades -> "Sin Notas"
-                                        isShort -> "Alerta de Brecha"
-                                        else -> "Tendencia Positiva"
-                                    }
-
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(badgeColor.copy(alpha = 0.12f))
+                                            .background(urgencyColor.copy(alpha = 0.12f))
                                             .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
                                         Text(
-                                            text = badgeLabel,
+                                            text = urgencyLabel,
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.ExtraBold,
-                                            color = badgeColor
+                                            color = urgencyColor
                                         )
                                     }
                                 }
@@ -672,7 +652,7 @@ fun UniBuddySalvavidasDialog(
                                     trendScore = totalPredictedFinalScore,
                                     requiredScore = if (hasActivatedEmergencyScan && !isImpossible && !isAlreadyPassed) requiredAvgOnPending else 0.0,
                                     passingGrade = passingGrade,
-                                    mainColor = mainColor,
+                                    mainColor = urgencyColor,
                                     hasGrades = hasGrades
                                 )
 
@@ -832,79 +812,218 @@ fun UniBuddySalvavidasDialog(
                                 }
 
                                 // ITEM BY ITEM REALISTIC VS REQUIRED COMPARISON
-                                if (pending.isNotEmpty() && !isAlreadyPassed && !isImpossible) {
+                                if (!hasGrades) {
                                     Spacer(modifier = Modifier.height(12.dp))
-                                    Text(
-                                        text = "EVALUACIONES PENDIENTES (PREDICCION VS REQUERIDO)",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = SlateGray,
-                                        letterSpacing = 0.5.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-
-                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        pending.forEach { assessment ->
-                                            Card(
-                                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                                                border = androidx.compose.foundation.BorderStroke(1.dp, Bone),
-                                                shape = RoundedCornerShape(8.dp)
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Bone),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.School,
+                                                contentDescription = null,
+                                                tint = SlateGray.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                            Text(
+                                                text = "Sin calificaciones registradas",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = NavyBlue
+                                            )
+                                            Text(
+                                                text = "No se registran notas para este periodo todavia. Agrega tus calificaciones en el panel principal para proyectar tus promedios y simular escenarios.",
+                                                fontSize = 11.sp,
+                                                color = SlateGray,
+                                                textAlign = TextAlign.Center,
+                                                lineHeight = 15.sp
+                                            )
+                                        }
+                                    }
+                                } else if (pending.isNotEmpty() && !isAlreadyPassed && !isImpossible) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    
+                                    // Main Aggregate Indicator
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = urgencyColor.copy(alpha = 0.08f)),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, urgencyColor.copy(alpha = 0.25f)),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .clip(CircleShape)
+                                                    .background(urgencyColor.copy(alpha = 0.15f)),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(10.dp),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Column(modifier = Modifier.weight(1f)) {
-                                                        Text(
-                                                            text = assessment.name,
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = NavyBlue
-                                                        )
-                                                        Text(
-                                                            text = "Peso evaluativo: ${assessment.percentage}%",
-                                                            fontSize = 9.sp,
-                                                            color = SlateGray
-                                                        )
-                                                    }
+                                                Icon(
+                                                    imageVector = Icons.Rounded.Analytics,
+                                                    contentDescription = null,
+                                                    tint = urgencyColor,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "Meta de Aprobacion",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = NavyBlue
+                                                )
+                                                Text(
+                                                    text = if (hasActivatedEmergencyScan) {
+                                                        "Debes promediar un ${String.format(Locale.US, "%.1f", requiredAvgOnPending)}% en lo pendiente."
+                                                    } else {
+                                                        "Pulsa 'Calcular Minimo' para estimar la meta de tus pendientes."
+                                                    },
+                                                    fontSize = 10.sp,
+                                                    color = SlateGray,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        }
+                                    }
 
-                                                    Row(
-                                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Expandable toggle button
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { showBreakdown = !showBreakdown }
+                                            .padding(vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (showBreakdown) "Ocultar desglose completo" else "Ver desglose completo",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = urgencyColor
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = if (showBreakdown) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                            contentDescription = null,
+                                            tint = urgencyColor,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
+                                    AnimatedVisibility(
+                                        visible = showBreakdown,
+                                        enter = expandVertically() + fadeIn(),
+                                        exit = shrinkVertically() + fadeOut()
+                                    ) {
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            pending.forEach { assessment ->
+                                                Card(
+                                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                                    border = androidx.compose.foundation.BorderStroke(1.dp, Bone),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.padding(12.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                                     ) {
-                                                        // Predicted Column
-                                                        Column(horizontalAlignment = Alignment.End) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
                                                             Text(
-                                                                text = "Proyeccion",
-                                                                fontSize = 8.sp,
-                                                                color = SlateGray,
-                                                                fontWeight = FontWeight.Bold
-                                                            )
-                                                            Text(
-                                                                text = if (hasGrades) "${String.format(Locale.US, "%.1f", runningAvg)}/100" else "--",
+                                                                text = assessment.name,
                                                                 fontSize = 11.sp,
                                                                 fontWeight = FontWeight.Bold,
-                                                                color = if (hasGrades) mainColor else SlateGray
+                                                                color = NavyBlue
+                                                            )
+                                                            Text(
+                                                                text = "Peso: ${assessment.percentage}%",
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Medium,
+                                                                color = SlateGray
                                                             )
                                                         }
 
-                                                        // Needed Column
-                                                        Column(horizontalAlignment = Alignment.End) {
-                                                            Text(
-                                                                text = "Necesario",
-                                                                fontSize = 8.sp,
-                                                                color = if (hasActivatedEmergencyScan) ProRed else SlateGray,
-                                                                fontWeight = FontWeight.Bold
+                                                        // Compact Horizontal Progress Bar
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .height(20.dp),
+                                                            contentAlignment = Alignment.CenterStart
+                                                        ) {
+                                                            // Track background
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .height(6.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(Color(0xFFE2E8F0))
                                                             )
-                                                            Text(
-                                                                text = if (hasActivatedEmergencyScan) "${String.format(Locale.US, "%.1f", requiredAvgOnPending)}/100" else "--",
-                                                                fontSize = 11.sp,
-                                                                fontWeight = FontWeight.ExtraBold,
-                                                                color = if (hasActivatedEmergencyScan) ProRed else SlateGray
+                                                            // Projected progress fill
+                                                            val projCoerced = (runningAvg / 100.0).coerceIn(0.0, 1.0).toFloat()
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth(projCoerced)
+                                                                    .height(6.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(urgencyColor)
                                                             )
+                                                            // Required marker tick
+                                                            if (hasActivatedEmergencyScan && !isImpossible && !isAlreadyPassed) {
+                                                                val reqCoerced = (requiredAvgOnPending / 100.0).coerceIn(0.0, 1.0).toFloat()
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth(reqCoerced)
+                                                                        .height(14.dp)
+                                                                ) {
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .align(Alignment.CenterEnd)
+                                                                            .width(3.dp)
+                                                                            .height(14.dp)
+                                                                            .clip(RoundedCornerShape(1.dp))
+                                                                            .background(ProRed)
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // Labels
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween
+                                                        ) {
+                                                            Text(
+                                                                text = "Proyeccion: ${runningAvg.toInt()}%",
+                                                                fontSize = 9.sp,
+                                                                color = SlateGray,
+                                                                fontWeight = FontWeight.Medium
+                                                            )
+                                                            if (hasActivatedEmergencyScan && !isImpossible && !isAlreadyPassed) {
+                                                                Text(
+                                                                    text = "Requerido: ${requiredAvgOnPending.toInt()}%",
+                                                                    fontSize = 9.sp,
+                                                                    color = ProRed,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -928,7 +1047,7 @@ fun UniBuddySalvavidasDialog(
                                             modifier = Modifier.size(16.dp)
                                         )
                                         Text(
-                                            text = "Aun no registramos notas para esta asignatura. Una vez que ingreses tus calificaciones en el panel principal, UniBuddy proyectara tu tendencia real automaticamente. Por ahora, necesitas promediar un ${passingGrade.toInt()}% en todas tus evaluaciones.",
+                                            text = "Aún no registramos calificaciones para esta asignatura. Registra tus notas en el panel principal para proyectar tu tendencia real automáticamente. Por ahora, necesitas promediar un ${passingGrade.toInt()}% en todas tus evaluaciones.",
                                             fontSize = 9.sp,
                                             color = SlateGray,
                                             fontWeight = FontWeight.Bold,

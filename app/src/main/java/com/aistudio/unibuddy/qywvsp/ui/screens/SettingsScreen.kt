@@ -76,6 +76,15 @@ fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit)
     
     var showProfileDialog by remember { mutableStateOf(false) }
     var showRouteDialog by remember { mutableStateOf(false) }
+    
+    val routeSettingsRequested by viewModel.showRouteSettingsRequested.collectAsStateWithLifecycle()
+    LaunchedEffect(routeSettingsRequested) {
+        if (routeSettingsRequested) {
+            showRouteDialog = true
+            viewModel.requestRouteSettings(false) // consume the request event
+        }
+    }
+    
     var showBadgeDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
     var showBuddyDialog by remember { mutableStateOf(false) }
@@ -1308,6 +1317,8 @@ fun FocusHistoryChart(viewModel: UniBuddyViewModel) {
         return
     }
 
+    var selectedDay by remember { mutableStateOf<Pair<String, Int>?>(null) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -1315,7 +1326,7 @@ fun FocusHistoryChart(viewModel: UniBuddyViewModel) {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Historial Visual de Concentración", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = NavyBlue)
-            Text("Minutos estudiados por día", fontSize = 12.sp, color = SlateGray)
+            Text("Presiona una barra para ver detalles", fontSize = 11.sp, color = SlateGray)
             Spacer(modifier = Modifier.height(16.dp))
             
             // Group by day (taking only last 7 days)
@@ -1328,19 +1339,62 @@ fun FocusHistoryChart(viewModel: UniBuddyViewModel) {
                 verticalAlignment = Alignment.Bottom
             ) {
                 aggregated.forEach { (date, mins) ->
+                    val isSelected = selectedDay?.first == date
                     val heightRatio = (mins.toFloat() / maxMins).coerceIn(0.1f, 1f)
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom, modifier = Modifier.fillMaxHeight()) {
-                        Text("$mins", fontSize = 10.sp, color = ProBlue, fontWeight = FontWeight.Bold)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Bottom,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable { selectedDay = Pair(date, mins) }
+                            .padding(horizontal = 4.dp)
+                    ) {
+                        Text(
+                            text = "$mins",
+                            fontSize = 10.sp,
+                            color = if (isSelected) Amber else ProBlue,
+                            fontWeight = FontWeight.Bold
+                        )
                         Spacer(modifier = Modifier.height(4.dp))
                         Box(
                             modifier = Modifier
-                                .width(30.dp)
+                                .fillMaxWidth(0.8f)
                                 .fillMaxHeight(heightRatio)
                                 .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                                .background(ProBlue)
+                                .background(if (isSelected) Amber else ProBlue)
+                                .border(
+                                    width = if (isSelected) 2.dp else 0.dp,
+                                    color = if (isSelected) NavyBlue else Color.Transparent,
+                                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
+                                )
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(date.take(5), fontSize = 10.sp, color = SlateGray) // "dd/MM"
+                        Text(date.take(5), fontSize = 10.sp, color = if (isSelected) NavyBlue else SlateGray, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) // "dd/MM"
+                    }
+                }
+            }
+
+            selectedDay?.let { (date, mins) ->
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Día: $date", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = NavyBlue)
+                            Text("Estudio acumulado: $mins min.", fontSize = 11.sp, color = SlateGray)
+                        }
+                        IconButton(onClick = { selectedDay = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = SlateGray, modifier = Modifier.size(16.dp))
+                        }
                     }
                 }
             }

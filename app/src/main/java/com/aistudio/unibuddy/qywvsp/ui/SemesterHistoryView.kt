@@ -36,6 +36,7 @@ import com.aistudio.unibuddy.qywvsp.data.Subject
 import com.aistudio.unibuddy.qywvsp.data.TripRecord
 import com.aistudio.unibuddy.qywvsp.ui.theme.*
 import com.aistudio.unibuddy.qywvsp.ui.screens.FocusHistoryChart
+import java.util.Locale
 
 @Composable
 fun SemesterHistoryView(viewModel: UniBuddyViewModel, onBack: (() -> Unit)? = null) {
@@ -679,6 +680,8 @@ fun AdvancedAcademicStatistics(viewModel: UniBuddyViewModel) {
             }
         }
 
+        var selectedSemesterName by remember { mutableStateOf<String?>(null) }
+
         if (semesterAverages.isNotEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(16.dp)),
@@ -687,6 +690,7 @@ fun AdvancedAcademicStatistics(viewModel: UniBuddyViewModel) {
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Evolución por Semestre", fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 14.sp)
+                    Text("Presiona una barra para ver detalles del semestre", fontSize = 11.sp, color = SlateGray)
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth().height(120.dp),
@@ -695,23 +699,76 @@ fun AdvancedAcademicStatistics(viewModel: UniBuddyViewModel) {
                     ) {
                         val maxGrade = semesterAverages.maxOf { it.second }.toFloat().coerceAtLeast(10f)
                         semesterAverages.forEach { (semester, avg) ->
+                            val isSelected = selectedSemesterName == semester
                             val barHeightWeight = (avg.toFloat() / maxGrade).coerceIn(0.1f, 1f)
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Bottom,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedSemesterName = if (isSelected) null else semester }
+                                    .padding(horizontal = 2.dp)
                             ) {
-                                Text(String.format("%.1f", avg), fontSize = 9.sp, color = SlateGray, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                 Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth(0.6f)
-                                        .fillMaxHeight(barHeightWeight)
-                                        .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-                                        .background(if (avg >= passingGrade) ProBlue else Color(0xFFEF5350))
+                                Text(
+                                    text = String.format(Locale.US, "%.1f", avg),
+                                    fontSize = 9.sp,
+                                    color = if (isSelected) Amber else SlateGray,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(semester.take(3), fontSize = 9.sp, color = NavyBlue, fontWeight = FontWeight.Bold)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(0.7f)
+                                        .fillMaxHeight(barHeightWeight)
+                                        .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                        .background(if (isSelected) Amber else (if (avg >= passingGrade) ProBlue else Color(0xFFEF5350)))
+                                        .border(
+                                            width = if (isSelected) 1.5.dp else 0.dp,
+                                            color = if (isSelected) NavyBlue else Color.Transparent,
+                                            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                                        )
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = semester.take(3),
+                                    fontSize = 9.sp,
+                                    color = if (isSelected) NavyBlue else SlateGray,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    selectedSemesterName?.let { semName ->
+                        val selectedRecs = history.filter { it.semester == semName }
+                        val semCredits = selectedRecs.sumOf { it.credits }
+                        val semSubjects = selectedRecs.size
+                        val semAvg = semesterAverages.firstOrNull { it.first == semName }?.second ?: 0.0
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = semName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = NavyBlue)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Promedio: ${String.format(Locale.US, "%.2f", semAvg)}  |  Asignaturas: $semSubjects  |  Créditos: $semCredits",
+                                        fontSize = 11.sp,
+                                        color = SlateGray
+                                    )
+                                }
+                                IconButton(onClick = { selectedSemesterName = null }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = SlateGray, modifier = Modifier.size(16.dp))
+                                }
                             }
                         }
                     }

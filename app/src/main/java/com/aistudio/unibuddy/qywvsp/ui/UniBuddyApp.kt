@@ -287,6 +287,7 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
                                 currentScreen = Screen.Notas
                             },
                             onConfigureRoute = {
+                                viewModel.requestRouteSettings(true)
                                 currentScreen = Screen.Config_Tab
                             },
                             onNavigateToFocus = {
@@ -319,6 +320,7 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
                                         selectedSubjectIdForDetails = clickedId
                                     },
                                     onConfigureRoute = {
+                                        viewModel.requestRouteSettings(true)
                                         currentScreen = Screen.Config_Tab
                                     }
                                 )
@@ -350,6 +352,7 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
                                         selectedSubjectIdForGrades = clickedId
                                     },
                                     onConfigureRoute = {
+                                        viewModel.requestRouteSettings(true)
                                         currentScreen = Screen.Config_Tab
                                     }
                                 )

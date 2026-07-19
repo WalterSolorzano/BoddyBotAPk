@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -26,10 +29,31 @@ fun BuddyMascot(
     isWorried: Boolean = false,
     isHappy: Boolean = true,
     pose: String = "idle", // "idle", "greeting", "working", "sleeping", "celebrating", "exam"
-    accessory: String = "none", // "none", "hat", "glasses", "scarf", "sunglasses"
+    accessory: String = "DEFAULT", // "DEFAULT", "none", "hat", "glasses", "scarf", "sunglasses"
     weatherState: String = "clear", // "clear", "rainy", "sunny", "night"
-    mainColor: Color = NavyBlue
+    mainColor: Color = Color.Unspecified
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
+    val actualAccessory = remember(accessory) {
+        if (accessory == "DEFAULT") {
+            val prefs = context.getSharedPreferences("unibuddy_prefs", android.content.Context.MODE_PRIVATE)
+            prefs.getString("buddy_accessory", "none") ?: "none"
+        } else {
+            accessory
+        }
+    }
+    
+    val actualColor = remember(mainColor) {
+        if (mainColor == Color.Unspecified) {
+            val prefs = context.getSharedPreferences("unibuddy_prefs", android.content.Context.MODE_PRIVATE)
+            val colorStr = prefs.getString("buddy_color", "#0F172A") ?: "#0F172A"
+            try { Color(android.graphics.Color.parseColor(colorStr)) } catch(e: Exception) { NavyBlue }
+        } else {
+            mainColor
+        }
+    }
+
     val infiniteTransition = rememberInfiniteTransition(label = "buddy_bob")
     val duration = when (pose) {
         "sleeping" -> 3000
@@ -72,7 +96,7 @@ fun BuddyMascot(
         modifier = modifier
             .size(100.dp)
             .background(Color.White, shape = CircleShape)
-            .border(2.dp, mainColor, CircleShape),
+            .border(2.dp, actualColor, CircleShape),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize().padding(12.dp).offset(y = bobOffset.dp)) {
@@ -81,11 +105,11 @@ fun BuddyMascot(
 
             // Ears
             drawCircle(color = Color.White, radius = w * 0.15f, center = Offset(w * 0.25f, h * 0.25f))
-            drawCircle(color = mainColor, radius = w * 0.15f, center = Offset(w * 0.25f, h * 0.25f), style = Stroke(width = 4f))
+            drawCircle(color = actualColor, radius = w * 0.15f, center = Offset(w * 0.25f, h * 0.25f), style = Stroke(width = 4f))
             drawCircle(color = Color(0xFFFFB7B2), radius = w * 0.08f, center = Offset(w * 0.25f, h * 0.25f))
 
             drawCircle(color = Color.White, radius = w * 0.15f, center = Offset(w * 0.75f, h * 0.25f))
-            drawCircle(color = mainColor, radius = w * 0.15f, center = Offset(w * 0.75f, h * 0.25f), style = Stroke(width = 4f))
+            drawCircle(color = actualColor, radius = w * 0.15f, center = Offset(w * 0.75f, h * 0.25f), style = Stroke(width = 4f))
             drawCircle(color = Color(0xFFFFB7B2), radius = w * 0.08f, center = Offset(w * 0.75f, h * 0.25f))
 
             // Draw arms in back for certain poses
@@ -94,7 +118,7 @@ fun BuddyMascot(
                     moveTo(w * 0.8f, h * 0.6f)
                     quadraticTo(w * 1.0f, h * 0.4f, w * 0.9f, h * (if(pose=="celebrating") 0.1f else 0.2f))
                 }
-                drawPath(path = armPath, color = mainColor, style = Stroke(width = 12f, cap = StrokeCap.Round))
+                drawPath(path = armPath, color = actualColor, style = Stroke(width = 12f, cap = StrokeCap.Round))
                 drawPath(path = armPath, color = Color.White, style = Stroke(width = 6f, cap = StrokeCap.Round))
                 
                 if (pose == "celebrating") {
@@ -102,17 +126,17 @@ fun BuddyMascot(
                         moveTo(w * 0.2f, h * 0.6f)
                         quadraticTo(w * 0.0f, h * 0.4f, w * 0.1f, h * 0.1f)
                     }
-                    drawPath(path = armPath2, color = mainColor, style = Stroke(width = 12f, cap = StrokeCap.Round))
+                    drawPath(path = armPath2, color = actualColor, style = Stroke(width = 12f, cap = StrokeCap.Round))
                     drawPath(path = armPath2, color = Color.White, style = Stroke(width = 6f, cap = StrokeCap.Round))
                 }
             }
 
             // Head Base
             drawCircle(color = Color.White, radius = w * 0.35f, center = Offset(w * 0.5f, h * 0.52f))
-            drawCircle(color = mainColor, radius = w * 0.35f, center = Offset(w * 0.5f, h * 0.52f), style = Stroke(width = 4.0f))
+            drawCircle(color = actualColor, radius = w * 0.35f, center = Offset(w * 0.5f, h * 0.52f), style = Stroke(width = 4.0f))
 
             // Yellow Construction Helmet
-            if (accessory == "hat") {
+            if (actualAccessory == "hat") {
                 val helmetPath = Path().apply {
                     arcTo(
                         rect = Rect(w * 0.18f, h * 0.15f, w * 0.82f, h * 0.48f),
@@ -125,7 +149,7 @@ fun BuddyMascot(
                     close()
                 }
                 drawPath(path = helmetPath, color = Color(0xFFF9C74F))
-                drawPath(path = helmetPath, color = mainColor, style = Stroke(width = 4.0f))
+                drawPath(path = helmetPath, color = actualColor, style = Stroke(width = 4.0f))
 
                 // Helmet Top ridge
                 drawRect(
@@ -134,12 +158,12 @@ fun BuddyMascot(
                     size = Size(w * 0.14f, h * 0.12f)
                 )
                 drawRect(
-                    color = mainColor,
+                    color = actualColor,
                     topLeft = Offset(w * 0.43f, h * 0.12f),
                     size = Size(w * 0.14f, h * 0.12f),
                     style = Stroke(width = 4.0f)
                 )
-            } else if (accessory == "cap") {
+            } else if (actualAccessory == "cap") {
                 val capColor = Color(0xFFEF5350)
                 val capPath = Path().apply {
                     arcTo(
@@ -153,7 +177,7 @@ fun BuddyMascot(
                     close()
                 }
                 drawPath(path = capPath, color = capColor)
-                drawPath(path = capPath, color = mainColor, style = Stroke(width = 3.0f))
+                drawPath(path = capPath, color = actualColor, style = Stroke(width = 3.0f))
                 
                 // Visor
                 val visorPath = Path().apply {
@@ -162,8 +186,8 @@ fun BuddyMascot(
                     lineTo(w * 0.8f, h * 0.40f)
                 }
                 drawPath(path = visorPath, color = capColor)
-                drawPath(path = visorPath, color = mainColor, style = Stroke(width = 3.0f))
-            } else if (accessory == "sombrero_nica") {
+                drawPath(path = visorPath, color = actualColor, style = Stroke(width = 3.0f))
+            } else if (actualAccessory == "sombrero_nica") {
                 // Sombrero de pita tradicional nicaragüense con cinta azul y blanco
                 val strawColor = Color(0xFFE3D2B4)
                 val ribbonBlue = Color(0xFF2196F3)
@@ -179,7 +203,7 @@ fun BuddyMascot(
                     close()
                 }
                 drawPath(path = crownPath, color = strawColor)
-                drawPath(path = crownPath, color = mainColor, style = Stroke(width = 4.0f))
+                drawPath(path = crownPath, color = actualColor, style = Stroke(width = 4.0f))
 
                 // Cinta del Sombrero (Azul y Blanco)
                 val ribbonPath = Path().apply {
@@ -190,7 +214,7 @@ fun BuddyMascot(
                     close()
                 }
                 drawPath(path = ribbonPath, color = ribbonBlue)
-                drawPath(path = ribbonPath, color = mainColor, style = Stroke(width = 2.0f))
+                drawPath(path = ribbonPath, color = actualColor, style = Stroke(width = 2.0f))
                 
                 // Detalle blanco de la cinta
                 drawLine(
@@ -208,15 +232,15 @@ fun BuddyMascot(
                     close()
                 }
                 drawPath(path = brimPath, color = strawColor)
-                drawPath(path = brimPath, color = mainColor, style = Stroke(width = 4.0f))
+                drawPath(path = brimPath, color = actualColor, style = Stroke(width = 4.0f))
             }
 
-            if (pose == "working" || pose == "exam" || accessory == "glasses") {
+            if (pose == "working" || pose == "exam" || actualAccessory == "glasses") {
                 // Draw some glasses
-                drawCircle(color = mainColor, radius = w * 0.12f, center = Offset(w * 0.38f, h * 0.48f), style = Stroke(width = 4f))
-                drawCircle(color = mainColor, radius = w * 0.12f, center = Offset(w * 0.62f, h * 0.48f), style = Stroke(width = 4f))
-                drawLine(color = mainColor, start = Offset(w * 0.44f, h * 0.48f), end = Offset(w * 0.56f, h * 0.48f), strokeWidth = 4f)
-            } else if (accessory == "sunglasses") {
+                drawCircle(color = actualColor, radius = w * 0.12f, center = Offset(w * 0.38f, h * 0.48f), style = Stroke(width = 4f))
+                drawCircle(color = actualColor, radius = w * 0.12f, center = Offset(w * 0.62f, h * 0.48f), style = Stroke(width = 4f))
+                drawLine(color = actualColor, start = Offset(w * 0.44f, h * 0.48f), end = Offset(w * 0.56f, h * 0.48f), strokeWidth = 4f)
+            } else if (actualAccessory == "sunglasses") {
                 // Sunglasses: filled dark lenses with reflective details!
                 val darkGlassColor = Color(0xFF212121)
                 drawCircle(color = darkGlassColor, radius = w * 0.12f, center = Offset(w * 0.38f, h * 0.48f))
@@ -229,7 +253,7 @@ fun BuddyMascot(
             }
 
             // Scarf
-            if (accessory == "scarf") {
+            if (actualAccessory == "scarf") {
                 val scarfPath = Path().apply {
                     moveTo(w * 0.15f, h * 0.65f)
                     lineTo(w * 0.85f, h * 0.65f)
@@ -238,21 +262,21 @@ fun BuddyMascot(
                     close()
                 }
                 drawPath(path = scarfPath, color = Color(0xFFE57373))
-                drawPath(path = scarfPath, color = mainColor, style = Stroke(width = 3f))
+                drawPath(path = scarfPath, color = actualColor, style = Stroke(width = 3f))
             }
 
             // Eyes
             val eyeRadius = w * 0.045f
             if (pose == "sleeping" || blinkProgress > 0.5f) {
-                drawLine(color = mainColor, start = Offset(w * 0.33f, h * 0.48f), end = Offset(w * 0.43f, h * 0.48f), strokeWidth = 5f)
-                drawLine(color = mainColor, start = Offset(w * 0.57f, h * 0.48f), end = Offset(w * 0.67f, h * 0.48f), strokeWidth = 5f)
+                drawLine(color = actualColor, start = Offset(w * 0.33f, h * 0.48f), end = Offset(w * 0.43f, h * 0.48f), strokeWidth = 5f)
+                drawLine(color = actualColor, start = Offset(w * 0.57f, h * 0.48f), end = Offset(w * 0.67f, h * 0.48f), strokeWidth = 5f)
             } else if (isWorried) {
                 // Worried/Sad eyes: slanted lines (/\ or \/)
-                drawLine(color = mainColor, start = Offset(w * 0.34f, h * 0.51f), end = Offset(w * 0.42f, h * 0.47f), strokeWidth = 5f)
-                drawLine(color = mainColor, start = Offset(w * 0.66f, h * 0.51f), end = Offset(w * 0.58f, h * 0.47f), strokeWidth = 5f)
+                drawLine(color = actualColor, start = Offset(w * 0.34f, h * 0.51f), end = Offset(w * 0.42f, h * 0.47f), strokeWidth = 5f)
+                drawLine(color = actualColor, start = Offset(w * 0.66f, h * 0.51f), end = Offset(w * 0.58f, h * 0.47f), strokeWidth = 5f)
             } else {
-                drawCircle(color = mainColor, radius = eyeRadius, center = Offset(w * 0.38f, h * 0.48f))
-                drawCircle(color = mainColor, radius = eyeRadius, center = Offset(w * 0.62f, h * 0.48f))
+                drawCircle(color = actualColor, radius = eyeRadius, center = Offset(w * 0.38f, h * 0.48f))
+                drawCircle(color = actualColor, radius = eyeRadius, center = Offset(w * 0.62f, h * 0.48f))
                 drawCircle(color = Color.White, radius = eyeRadius * 0.4f, center = Offset(w * 0.36f, h * 0.46f))
                 drawCircle(color = Color.White, radius = eyeRadius * 0.4f, center = Offset(w * 0.60f, h * 0.46f))
             }
@@ -264,14 +288,14 @@ fun BuddyMascot(
                 size = Size(w * 0.18f, h * 0.13f)
             )
             drawOval(
-                color = mainColor,
+                color = actualColor,
                 topLeft = Offset(w * 0.41f, h * 0.53f),
                 size = Size(w * 0.18f, h * 0.13f),
                 style = Stroke(width = 3.0f)
             )
 
             // Nose
-            drawCircle(color = mainColor, radius = w * 0.04f, center = Offset(w * 0.5f, h * 0.56f))
+            drawCircle(color = actualColor, radius = w * 0.04f, center = Offset(w * 0.5f, h * 0.56f))
 
             // Mouth
             if (isHappy && !isWorried && pose != "sleeping") {
@@ -279,18 +303,18 @@ fun BuddyMascot(
                     moveTo(w * 0.45f, h * 0.59f)
                     quadraticTo(w * 0.5f, h * 0.64f, w * 0.55f, h * 0.59f)
                 }
-                drawPath(path = mouthPath, color = mainColor, style = Stroke(width = 3.0f))
+                drawPath(path = mouthPath, color = actualColor, style = Stroke(width = 3.0f))
             } else if (isWorried) {
                 // Sad mouth curve!
                 val mouthPath = Path().apply {
                     moveTo(w * 0.45f, h * 0.62f)
                     quadraticTo(w * 0.5f, h * 0.58f, w * 0.55f, h * 0.62f)
                 }
-                drawPath(path = mouthPath, color = mainColor, style = Stroke(width = 3.0f))
+                drawPath(path = mouthPath, color = actualColor, style = Stroke(width = 3.0f))
             } else if (pose == "sleeping") {
-                drawCircle(color = mainColor, radius = w * 0.03f, center = Offset(w * 0.5f, h * 0.62f), style = Stroke(width = 2f))
+                drawCircle(color = actualColor, radius = w * 0.03f, center = Offset(w * 0.5f, h * 0.62f), style = Stroke(width = 2f))
             } else {
-                drawLine(color = mainColor, start = Offset(w * 0.46f, h * 0.60f), end = Offset(w * 0.54f, h * 0.60f), strokeWidth = 3f)
+                drawLine(color = actualColor, start = Offset(w * 0.46f, h * 0.60f), end = Offset(w * 0.54f, h * 0.60f), strokeWidth = 3f)
             }
 
             // Draw Book if in Exam mode
@@ -305,10 +329,10 @@ fun BuddyMascot(
                     close()
                 }
                 drawPath(path = bookPath, color = Color(0xFFF28B82)) // Pretty warm red book
-                drawPath(path = bookPath, color = mainColor, style = Stroke(width = 3f))
+                drawPath(path = bookPath, color = actualColor, style = Stroke(width = 3f))
                 
                 // Book middle line spine
-                drawLine(color = mainColor, start = Offset(w * 0.5f, h * 0.77f), end = Offset(w * 0.5f, h * 0.89f), strokeWidth = 3f)
+                drawLine(color = actualColor, start = Offset(w * 0.5f, h * 0.77f), end = Offset(w * 0.5f, h * 0.89f), strokeWidth = 3f)
                 
                 // Page text lines
                 drawLine(color = Color.White.copy(alpha = 0.85f), start = Offset(w * 0.40f, h * 0.78f), end = Offset(w * 0.47f, h * 0.80f), strokeWidth = 2f)
@@ -329,11 +353,11 @@ fun BuddyMascot(
                     close()
                 }
                 drawPath(path = raincoatPath, color = Color(0xFFFFD54F)) // Yellow
-                drawPath(path = raincoatPath, color = mainColor, style = Stroke(width = 3f))
+                drawPath(path = raincoatPath, color = actualColor, style = Stroke(width = 3f))
                 
                 // Raincoat buttons
-                drawCircle(color = mainColor, radius = w * 0.02f, center = Offset(w * 0.5f, h * 0.68f))
-                drawCircle(color = mainColor, radius = w * 0.02f, center = Offset(w * 0.5f, h * 0.76f))
+                drawCircle(color = actualColor, radius = w * 0.02f, center = Offset(w * 0.5f, h * 0.68f))
+                drawCircle(color = actualColor, radius = w * 0.02f, center = Offset(w * 0.5f, h * 0.76f))
             } else if (weatherState == "night") {
                 // Cute sleeping cap or moon symbol on chest? Let's keep it simple.
                 // Just a tiny star on the chest.

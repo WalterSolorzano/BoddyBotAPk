@@ -63,8 +63,8 @@ import com.aistudio.unibuddy.qywvsp.R
 @Composable
 fun DashboardScreen(
     viewModel: UniBuddyViewModel,
-    onNavigateToDetails: (Int) -> Unit,
-    onNavigateToGrades: (Int) -> Unit,
+    onNavigateToDetails: (Int?) -> Unit,
+    onNavigateToGrades: (Int?) -> Unit,
     onConfigureRoute: () -> Unit,
     onNavigateToFocus: () -> Unit,
     onNavigateToStats: () -> Unit,
@@ -330,8 +330,7 @@ fun DashboardScreen(
                     fontSize = 11.sp,
                     color = if (isRaining) NavyBlue else Color(0xFF5D4037),
                     fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
@@ -340,15 +339,14 @@ fun DashboardScreen(
         BuddyCalendarPromptWidget(viewModel = viewModel)
 
         // --- 2d. UniBuddy Salvavidas SOS Trigger ---
-        val isVacation = semesterState == "Vacaciones"
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { showSalvavidasDialog = true }
                 .testTag("unibuddy_salvavidas_trigger"),
-            colors = CardDefaults.cardColors(containerColor = if (isVacation) ProBlue.copy(alpha = 0.08f) else ProRed.copy(alpha = 0.08f)),
+            colors = CardDefaults.cardColors(containerColor = ProRed.copy(alpha = 0.08f)),
             shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, if (isVacation) ProBlue.copy(alpha = 0.25f) else ProRed.copy(alpha = 0.25f))
+            border = BorderStroke(1.dp, ProRed.copy(alpha = 0.25f))
         ) {
             Row(
                 modifier = Modifier
@@ -361,25 +359,25 @@ fun DashboardScreen(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(if (isVacation) ProBlue.copy(alpha = 0.15f) else ProRed.copy(alpha = 0.15f)),
+                        .background(ProRed.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (isVacation) Icons.Rounded.Calculate else Icons.Rounded.MedicalServices,
+                        imageVector = Icons.Rounded.MedicalServices,
                         contentDescription = "Salvavidas",
-                        tint = if (isVacation) ProBlue else ProRed,
+                        tint = ProRed,
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (isVacation) "Simulador Académico UniBuddy" else "UniBuddy Salvavidas Académico",
+                        text = "UniBuddy Salvavidas Académico",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = NavyBlue
                     )
                     Text(
-                        text = if (isVacation) "Simulador interactivo: Planifica tu promedio y simula notas" else "Calculadora SOS: ¿Cuánto necesitas para salvar el semestre?",
+                        text = "Calculadora SOS: ¿Cuánto necesitas para salvar el semestre?",
                         fontSize = 10.sp,
                         color = SlateGray,
                         fontWeight = FontWeight.Medium
@@ -747,115 +745,6 @@ fun DashboardScreen(
                 estimatedTravelMinutes = estimatedTravelMins,
                 isOutOfRange = isOutOfRange
             )
-        }
-
-        // --- 7. Fila de resumen ("Tu Resumen") ---
-        Text(
-            text = "TU RESUMEN",
-            fontSize = 10.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = SlateGray,
-            letterSpacing = 1.sp,
-            modifier = Modifier.padding(top = 4.dp)
-        )
-        
-        // 2x2 Grid of Small Resumen Chips
-        val gradedExams = assessments.filter { it.grade != null }
-        val overallGPA = if (gradedExams.isNotEmpty()) {
-            gradedExams.sumOf { it.grade ?: 0.0 } / gradedExams.size
-        } else 0.0
-        val overallGPAFormatted = String.format(Locale.US, "%.1f", overallGPA)
-        
-        val globalAttendancePercent = remember(subjects, attendanceLogs) {
-            val totalPres = attendanceLogs.count { it.isPresent }
-            val totalAbs = attendanceLogs.count { !it.isPresent }
-            val total = totalPres + totalAbs
-            if (total > 0) (totalPres.toFloat() / total.toFloat() * 100f).toInt() else 100
-        }
-        val pendingTasksCount = tasks.count { !it.isCompleted }
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                // Chip 1: Promedio
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(Color(0xFFFFF8E1), RoundedCornerShape(12.dp))
-                        .border(0.5.dp, Color(0xFFFFB300).copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                        .padding(10.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Rounded.Star, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(22.dp))
-                        Column {
-                            Text(text = overallGPAFormatted, fontSize = 16.sp, fontWeight = FontWeight.Black, color = NavyBlue)
-                            Text(text = "Promedio", fontSize = 9.sp, color = SlateGray, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-                
-                // Chip 2: Asistencia
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(Color(0xFFE8F5E9), RoundedCornerShape(12.dp))
-                        .border(0.5.dp, Color(0xFF4CAF50).copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                        .padding(10.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Rounded.AssignmentTurnedIn, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(22.dp))
-                        Column {
-                            Text(text = "$globalAttendancePercent%", fontSize = 16.sp, fontWeight = FontWeight.Black, color = NavyBlue)
-                            Text(text = "Asistencia", fontSize = 9.sp, color = SlateGray, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-            
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                // Chip 3: Tareas Pendientes
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(Color(0xFFFFEBEE), RoundedCornerShape(12.dp))
-                        .border(0.5.dp, Color(0xFFE53935).copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                        .padding(10.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Rounded.Assignment, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(22.dp))
-                        Column {
-                            Text(text = "$pendingTasksCount", fontSize = 16.sp, fontWeight = FontWeight.Black, color = NavyBlue)
-                            Text(text = "Pendientes", fontSize = 9.sp, color = SlateGray, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-                
-                // Chip 4: Semana Lectiva
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(Color(0xFFE3F2FD), RoundedCornerShape(12.dp))
-                        .border(0.5.dp, Color(0xFF1E88E5).copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                        .padding(10.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Rounded.CalendarToday, contentDescription = null, tint = Color(0xFF1E88E5), modifier = Modifier.size(22.dp))
-                        Column {
-                            Text(
-                                text = if (semesterState == "Vacaciones") "Vacaciones" else "Sem. $currentWeek",
-                                fontSize = if (semesterState == "Vacaciones") 11.sp else 15.sp,
-                                fontWeight = FontWeight.Black,
-                                color = NavyBlue
-                            )
-                            Text(
-                                text = if (semesterState == "Vacaciones") "Receso" else "Progreso",
-                                fontSize = 9.sp,
-                                color = SlateGray,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 }

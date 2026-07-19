@@ -1163,6 +1163,13 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     private val _profilePhotoUri = MutableStateFlow<String?>(null)
     val profilePhotoUri: StateFlow<String?> = _profilePhotoUri.asStateFlow()
 
+    private val _showRouteSettingsRequested = MutableStateFlow(false)
+    val showRouteSettingsRequested: StateFlow<Boolean> = _showRouteSettingsRequested.asStateFlow()
+
+    fun requestRouteSettings(requested: Boolean) {
+        _showRouteSettingsRequested.value = requested
+    }
+
     private val _buddyPose = MutableStateFlow("idle")
     val buddyPose: StateFlow<String> = _buddyPose.asStateFlow()
     
