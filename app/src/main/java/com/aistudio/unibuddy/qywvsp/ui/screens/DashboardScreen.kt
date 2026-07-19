@@ -314,28 +314,33 @@ fun DashboardScreen(
             shape = RoundedCornerShape(12.dp),
             border = BorderStroke(0.5.dp, (if (isRaining) ProBlue else Amber).copy(alpha = 0.2f))
         ) {
-            Row(
-                modifier = Modifier.padding(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = if (isRaining) Icons.Rounded.Umbrella else Icons.Rounded.Thermostat,
-                    contentDescription = null,
-                    tint = if (isRaining) ProBlue else Amber,
-                    modifier = Modifier.size(16.dp)
-                )
-                Text(
-                    text = if (semesterState == "Vacaciones") {
-                        "Pronóstico: $weatherDescription. ${if (isRaining) "Lleva paraguas si vas a salir a pasear." else "Excelente día para relajarse y disfrutar al aire libre."}"
-                    } else {
-                        "Pronóstico: $weatherDescription. ${if (isRaining) "Lleva paraguas para proteger tu UniBuddy." else "Excelente día para estudiar en el campus."}"
-                    },
-                    fontSize = 11.sp,
-                    color = if (isRaining) NavyBlue else Color(0xFF5D4037),
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.weight(1f)
-                )
+            Box(modifier = Modifier.fillMaxWidth()) {
+                if (isRaining) {
+                    RainOverlay(modifier = Modifier.matchParentSize())
+                }
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isRaining) Icons.Rounded.Umbrella else Icons.Rounded.Thermostat,
+                        contentDescription = null,
+                        tint = if (isRaining) ProBlue else Amber,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = if (semesterState == "Vacaciones") {
+                            "Pronóstico: $weatherDescription. ${if (isRaining) "Lleva paraguas si vas a salir a pasear." else "Excelente día para relajarse y disfrutar al aire libre."}"
+                        } else {
+                            "Pronóstico: $weatherDescription. ${if (isRaining) "Lleva paraguas para proteger tu UniBuddy." else "Excelente día para estudiar en el campus."}"
+                        },
+                        fontSize = 11.sp,
+                        color = if (isRaining) NavyBlue else Color(0xFF5D4037),
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
 
@@ -1028,6 +1033,51 @@ fun InteractiveCommuteMap(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun RainOverlay(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "RainTransition")
+    val animProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "RainProgress"
+    )
+
+    val drops = remember {
+        List(15) {
+            Triple(
+                Math.random().toFloat(),
+                Math.random().toFloat(),
+                (10 + Math.random() * 15).toFloat()
+            )
+        }
+    }
+
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+
+        drops.forEach { (relX, relY, speedScale) ->
+            val startY = ((relY + animProgress * speedScale) % 1.0f) * height
+            val startX = relX * width
+            
+            val dx = 2f
+            val dy = 15f
+            
+            drawLine(
+                color = Color(0xFF90CAF9).copy(alpha = 0.4f),
+                start = Offset(startX, startY),
+                end = Offset(startX - dx, startY + dy),
+                strokeWidth = 1.5.dp.toPx(),
+                cap = StrokeCap.Round
+            )
         }
     }
 }
