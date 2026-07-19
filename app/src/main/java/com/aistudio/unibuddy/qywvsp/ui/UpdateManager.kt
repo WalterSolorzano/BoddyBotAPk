@@ -18,6 +18,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
+import android.content.SharedPreferences
 
 object UpdateManager {
 
@@ -77,6 +78,15 @@ object UpdateManager {
     fun downloadAndInstallUpdate(context: Context, apkUrl: String, versionName: String) {
         Toast.makeText(context, "Descargando actualización...", Toast.LENGTH_SHORT).show()
         
+        // Respaldo de la última versión funcional
+        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val existingUpdate = File(downloadDir, "unibuddy_update.apk")
+        if (existingUpdate.exists()) {
+            val backupFile = File(downloadDir, "unibuddy_backup.apk")
+            if (backupFile.exists()) backupFile.delete()
+            existingUpdate.renameTo(backupFile)
+        }
+
         val request = DownloadManager.Request(Uri.parse(apkUrl))
             .setTitle("UniBuddy Update v$versionName")
             .setDescription("Descargando nueva versión...")
@@ -99,11 +109,7 @@ object UpdateManager {
             }
         }
         
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED)
-        } else {
-            context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
-        }
+        androidx.core.content.ContextCompat.registerReceiver(context, receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
     }
 
     private fun installApk(context: Context, downloadId: Long) {
@@ -122,3 +128,22 @@ object UpdateManager {
         }
     }
 }
+
+    fun verifyBootSuccess(context: Context) {
+        val prefs = context.getSharedPreferences("OTA_PREFS", Context.MODE_PRIVATE)
+        val currentVersion = BuildConfig.VERSION_CODE
+        val lastVerified = prefs.getInt("last_verified_version", -1)
+        
+        if (currentVersion > lastVerified) {
+            // Arranque exitoso de nueva versión
+            prefs.edit().putInt("last_verified_version", currentVersion).apply()
+            
+            // Podemos descartar la versión anterior
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val backupFile = File(downloadDir, "unibuddy_backup.apk")
+            if (backupFile.exists()) {
+                backupFile.delete()
+                Log.d("UpdateManager", "Arranque exitoso verificado. Respaldo anterior descartado.")
+            }
+        }
+    }

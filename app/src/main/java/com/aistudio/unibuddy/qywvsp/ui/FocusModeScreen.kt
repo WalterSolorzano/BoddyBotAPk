@@ -84,7 +84,7 @@ fun List<FocusObjective>.toObjectivesJsonString(): String {
 }
 
 // Session Record Models
-data class FocusSessionRecord(val date: String, val duration: Int, val label: String)
+data class FocusSessionRecord(val date: String, val duration: Int, val label: String, val timeOfDay: String = "", val interrupted: Boolean = false)
 
 fun String.parseSessionsHistory(): List<FocusSessionRecord> {
     val list = mutableListOf<FocusSessionRecord>()
@@ -97,7 +97,9 @@ fun String.parseSessionsHistory(): List<FocusSessionRecord> {
                 FocusSessionRecord(
                     date = obj.getString("date"),
                     duration = obj.getInt("duration"),
-                    label = obj.optString("label", "Estudio")
+                    label = obj.optString("label", "Estudio"),
+                    timeOfDay = obj.optString("timeOfDay", ""),
+                    interrupted = obj.optBoolean("interrupted", false)
                 )
             )
         }
@@ -135,9 +137,41 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
 
+    var isLoading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(350)
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundBone),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = ProBlue)
+        }
+        return
+    }
+
     // Observe focus state from persistent settings via ViewModel
     val objectivesJson by viewModel.focusObjectivesJson.collectAsStateWithLifecycle()
     val sessionsHistoryJson by viewModel.focusSessionsHistoryJson.collectAsStateWithLifecycle()
+
+    val absences by viewModel.absences.collectAsStateWithLifecycle()
+    val assessments by viewModel.assessments.collectAsStateWithLifecycle()
+
+    val stressLevel = remember(assessments, absences) {
+        (assessments.count { it.grade == null } * 15f + absences.size * 5f).coerceIn(0f, 100f)
+    }
+    val stressStatus = remember(stressLevel) {
+        when {
+            stressLevel > 70f -> "Crítico"
+            stressLevel > 40f -> "Elevado"
+            else -> "Saludable"
+        }
+    }
 
     val objectives = remember(objectivesJson) { objectivesJson.parseObjectives() }
     val sessionsHistory = remember(sessionsHistoryJson) { sessionsHistoryJson.parseSessionsHistory() }
@@ -1036,6 +1070,18 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
                     }
                 }
             }
+        }
+            
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            val upcomingExamsCount = remember(assessments) { assessments.count { it.grade == null } }
+            val absencesCount = absences.size
+            WellnessWidget(
+                upcomingExamsCount = upcomingExamsCount,
+                absencesCount = absencesCount,
+                calculatedStress = stressLevel.toFloat(),
+                statusText = stressStatus
+            )
         }
     }
 

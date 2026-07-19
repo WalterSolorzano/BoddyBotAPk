@@ -8,6 +8,8 @@ import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
+import java.io.File
+import android.graphics.BitmapFactory
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -117,6 +119,22 @@ class AcademicWeatherWidget : GlanceAppWidget() {
                 else -> R.drawable.buddy_widget_noche
             }
 
+            val widgetFile = File(context.filesDir, "widget_pet_current.png")
+            val imageProvider = if (widgetFile.exists()) {
+                try {
+                    val bitmap = BitmapFactory.decodeFile(widgetFile.absolutePath)
+                    if (bitmap != null) {
+                        ImageProvider(bitmap)
+                    } else {
+                        ImageProvider(iconRes)
+                    }
+                } catch (e: Exception) {
+                    ImageProvider(iconRes)
+                }
+            } else {
+                ImageProvider(iconRes)
+            }
+
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()
@@ -130,7 +148,7 @@ class AcademicWeatherWidget : GlanceAppWidget() {
                     modifier = GlanceModifier.padding(16.dp)
                 ) {
                     Image(
-                        provider = ImageProvider(iconRes),
+                        provider = imageProvider,
                         contentDescription = "Academic Weather",
                         modifier = GlanceModifier.size(100.dp)
                     )

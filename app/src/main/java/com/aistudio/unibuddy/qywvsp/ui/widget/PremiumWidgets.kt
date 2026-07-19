@@ -325,7 +325,7 @@ class QuickCommuteWidget : GlanceAppWidget() {
                         Text("-- MIN", style = TextStyle(color = ColorProvider(Color.White), fontSize = 18.sp, fontWeight = FontWeight.Bold))
                     }
                     
-                    Text(weather, style = TextStyle(color = ColorProvider(Color(0xFFB3E5FC)), fontSize = 10.sp))
+                    Text(weather, style = TextStyle(color = ColorProvider(Color(0xFFE2E8F0)), fontSize = 10.sp))
                 }
             }
         }

@@ -35,16 +35,37 @@ import com.aistudio.unibuddy.qywvsp.data.AttendanceLog
 import com.aistudio.unibuddy.qywvsp.data.Subject
 import com.aistudio.unibuddy.qywvsp.data.TripRecord
 import com.aistudio.unibuddy.qywvsp.ui.theme.*
+import com.aistudio.unibuddy.qywvsp.ui.screens.FocusHistoryChart
 
 @Composable
 fun SemesterHistoryView(viewModel: UniBuddyViewModel, onBack: (() -> Unit)? = null) {
     val context = LocalContext.current
+    
+    var isLoading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(350)
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundBone),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = ProBlue)
+        }
+        return
+    }
+
     val subjects by viewModel.subjects.collectAsStateWithLifecycle()
     val attendanceLogs by viewModel.attendanceLogs.collectAsStateWithLifecycle()
     val assessments by viewModel.assessments.collectAsStateWithLifecycle()
     val tripRecords by viewModel.tripRecords.collectAsStateWithLifecycle()
+    val seasonRecaps by viewModel.seasonRecaps.collectAsStateWithLifecycle()
 
-    var logTab by remember { mutableStateOf("asistencias") } // "asistencias", "examenes", "gps"
+    var logTab by remember { mutableStateOf("insights") }
 
     // Calculate core statistics
     val totalClasses = attendanceLogs.size
@@ -151,7 +172,7 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel, onBack: (() -> Unit)? = nu
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            listOf("oficial" to "Oficial", "asistencias" to "Asist.", "examenes" to "Notas", "gps" to "Viajes").forEach { (tabKey, tabLabel) ->
+            listOf("insights" to "Insights", "oficial" to "Hist. Oficial", "asistencias" to "Asist.", "examenes" to "Notas", "gps" to "Viajes").forEach { (tabKey, tabLabel) ->
                 val isSelected = logTab == tabKey
                 Box(
                     modifier = Modifier
@@ -174,6 +195,59 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel, onBack: (() -> Unit)? = nu
 
         // Conditional display based on tab selection
         when (logTab) {
+            "seasons" -> {
+                if (seasonRecaps.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                        Text("No hay temporadas cerradas aún.", color = SlateGray)
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        seasonRecaps.forEach { recap ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    val sdf = java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault())
+                                    val startStr = sdf.format(java.util.Date(recap.startDate))
+                                    val endStr = sdf.format(java.util.Date(recap.endDate))
+                                    Text(text = "Temporada: $startStr - $endStr", fontWeight = FontWeight.Bold, color = NavyBlue)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(text = recap.highlightText, fontSize = 14.sp, color = ProBlue, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Column {
+                                            Text("Asistencia", fontSize = 12.sp, color = SlateGray)
+                                            Text("${recap.attendancePercentage.toInt()}%", fontWeight = FontWeight.Bold)
+                                        }
+                                        Column {
+                                            Text("Enfoque", fontSize = 12.sp, color = SlateGray)
+                                            Text("${String.format("%.1f", recap.focusHoursTotal)}h", fontWeight = FontWeight.Bold)
+                                        }
+                                        Column {
+                                            Text("Racha", fontSize = 12.sp, color = SlateGray)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Whatshot,
+                                                    contentDescription = "Racha",
+                                                    tint = com.aistudio.unibuddy.qywvsp.ui.theme.Amber,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("${recap.maxStreak}", fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "insights" -> {
+                WeeklyInsightsSummary(viewModel = viewModel, attendanceLogs = attendanceLogs, assessments = assessments)
+            }
             "oficial" -> {
                 AdvancedAcademicStatistics(viewModel)
             }
@@ -709,6 +783,113 @@ fun AdvancedAcademicStatistics(viewModel: UniBuddyViewModel) {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WeeklyInsightsSummary(
+    viewModel: UniBuddyViewModel, 
+    attendanceLogs: List<com.aistudio.unibuddy.qywvsp.data.AttendanceLog>,
+    assessments: List<com.aistudio.unibuddy.qywvsp.data.Assessment>
+) {
+    val weeklyStreak by viewModel.weeklyStreak.collectAsStateWithLifecycle()
+    
+    Column(
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
+    ) {
+        // Racha Semanal Card
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = NavyBlue),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Whatshot, contentDescription = "Racha", tint = Amber, modifier = Modifier.size(36.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text("Racha de Actividad", color = Bone, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("$weeklyStreak días consecutivos", color = MintGreen, fontSize = 14.sp)
+                }
+            }
+        }
+        
+        BuddyMoodHistoryWidget(attendanceLogs = attendanceLogs, assessments = assessments)
+        
+        FocusHistoryChart(viewModel = viewModel)
+    }
+}
+
+@Composable
+fun BuddyMoodHistoryWidget(attendanceLogs: List<com.aistudio.unibuddy.qywvsp.data.AttendanceLog>, assessments: List<com.aistudio.unibuddy.qywvsp.data.Assessment> = emptyList()) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "Estado de Ánimo Semanal",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = SlateGray
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                val calendar = java.util.Calendar.getInstance()
+                val sdf = java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault())
+                
+                // Get last 7 days
+                val days = (6 downTo 0).map { i ->
+                    val cal = java.util.Calendar.getInstance()
+                    cal.add(java.util.Calendar.DAY_OF_YEAR, -i)
+                    cal.time
+                }
+                
+                days.forEach { date ->
+                    val dateStr = sdf.format(date)
+                    val logsForDay = attendanceLogs.filter { it.date == dateStr }
+                    val dayName = java.text.SimpleDateFormat("E", java.util.Locale.getDefault()).format(date).take(1).uppercase()
+                    val calDate = java.util.Calendar.getInstance()
+                    calDate.time = date
+                    val dayCode = when (calDate.get(java.util.Calendar.DAY_OF_WEEK)) {
+                        java.util.Calendar.MONDAY -> "Lu"
+                        java.util.Calendar.TUESDAY -> "Ma"
+                        java.util.Calendar.WEDNESDAY -> "Mi"
+                        java.util.Calendar.THURSDAY -> "Ju"
+                        java.util.Calendar.FRIDAY -> "Vi"
+                        java.util.Calendar.SATURDAY -> "Sá"
+                        else -> "Do"
+                    }
+                    val fullDateStr = java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(date)
+                    val hasExam = assessments.any { it.examDate.trim().equals(dayCode, ignoreCase = true) || it.examDate == fullDateStr }
+                    
+                    val moodColor = when {
+                        logsForDay.any { !it.isPresent } -> Amber // Worried
+                        hasExam -> ProBlue // Working
+                        logsForDay.isNotEmpty() && logsForDay.all { it.isPresent } -> DarkGreen // Happy
+                        else -> Color(0xFFEEEEEE)
+                    }
+                    
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(moodColor)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(dayName, fontSize = 10.sp, color = SlateGray, fontWeight = FontWeight.Bold)
                     }
                 }
             }

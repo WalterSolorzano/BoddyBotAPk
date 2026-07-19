@@ -7,6 +7,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
+import com.aistudio.unibuddy.qywvsp.ui.screens.SeasonRecapOverlay
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -90,6 +93,9 @@ fun UniBuddyNavGraph(
                 },
                 onNavigateToStats = {
                     navController.navigate("stats")
+                },
+                onNavigateToPensum = {
+                    navController.navigate("pensum")
                 }
             )
         }

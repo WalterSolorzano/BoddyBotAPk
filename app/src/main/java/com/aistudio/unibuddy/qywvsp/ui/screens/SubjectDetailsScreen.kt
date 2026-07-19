@@ -68,6 +68,24 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
     val attendanceLogs by viewModel.getLogsForSubject(subjectId).collectAsStateWithLifecycle(emptyList())
     val subjectImportanceMap by viewModel.subjectImportanceMap.collectAsStateWithLifecycle()
 
+    var isLoading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(350)
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundBone),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = ProBlue)
+        }
+        return
+    }
+
     if (subject == null) {
         onBack()
         return

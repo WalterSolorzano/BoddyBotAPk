@@ -5,7 +5,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
+
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -23,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
@@ -293,6 +294,9 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
                             },
                             onNavigateToStats = {
                                 currentScreen = Screen.Stats
+                            },
+                            onNavigateToPensum = {
+                                currentScreen = Screen.Pensum
                             }
                         )
                     }
@@ -368,7 +372,7 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
                         SemesterHistoryView(viewModel = viewModel, onBack = { currentScreen = Screen.Inicio })
                     }
                     Screen.Pensum -> {
-                        PensumProgressScreen(viewModel = viewModel)
+                        PensumProgressScreen(viewModel = viewModel, onBack = { currentScreen = Screen.Inicio })
                     }
                     Screen.FocusMode -> {
                         FocusModeScreen(viewModel = viewModel)
@@ -473,138 +477,91 @@ fun SubjectGridItem(
 ) {
     val legacySubAbs = absences.filter { it.subjectId == sub.id }
     val subLogs = attendanceLogs.filter { it.subjectId == sub.id }
-    
     val subAbsCount = subLogs.count { !it.isPresent }.coerceAtLeast(legacySubAbs.size)
     val subPresCount = subLogs.count { it.isPresent }
-    val totalClassesHeld = subPresCount + subAbsCount
-    val activeAttendanceRate = if (totalClassesHeld > 0) (subPresCount.toDouble() / totalClassesHeld * 100.0) else 100.0
-
-    val maxAbs = sub.totalClasses - ceil(sub.totalClasses * (sub.requiredAttendancePercent / 100.0)).toInt()
+    
+    val maxAbs = sub.totalClasses - kotlin.math.ceil(sub.totalClasses * (sub.requiredAttendancePercent / 100.0)).toInt()
     val remaining = maxAbs - subAbsCount
     
     val fractionUsed = if (maxAbs > 0) subAbsCount.toFloat() / maxAbs.toFloat() else 0f
     val percentageUsed = (fractionUsed * 100).toInt()
-
+    
     val isWarning = remaining <= 2 && remaining > 0
     val isCritical = remaining <= 0
+    
+    val statusColor = if (isCritical) com.aistudio.unibuddy.qywvsp.ui.theme.StatusRed else if (isWarning) com.aistudio.unibuddy.qywvsp.ui.theme.StatusAmber else com.aistudio.unibuddy.qywvsp.ui.theme.StatusGreen
 
-    val colors = getSubjectColorPalette(sub.colorHex)
-    val bgColor = colors.first
-    val accentColor = colors.second
+    val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val todayCode = when (java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)) {
+        java.util.Calendar.MONDAY -> "Lu"
+        java.util.Calendar.TUESDAY -> "Ma"
+        java.util.Calendar.WEDNESDAY -> "Mi"
+        java.util.Calendar.THURSDAY -> "Ju"
+        java.util.Calendar.FRIDAY -> "Vi"
+        java.util.Calendar.SATURDAY -> "Sá"
+        else -> "Do"
+    }
+    val defaultSession = sub.sessions.find { it.day.trim().equals(todayCode, ignoreCase = true) }
 
-    val hapticFeedback = LocalHapticFeedback.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                hapticFeedback.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                 onSubjectClick(sub.id)
             }
             .animateContentSize()
-            .shadow(4.dp, RoundedCornerShape(18.dp)),
-        colors = CardDefaults.cardColors(containerColor = bgColor),
-        shape = RoundedCornerShape(18.dp)
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = com.aistudio.unibuddy.qywvsp.ui.theme.BackgroundBone),
+        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f)),
+        shape = RoundedCornerShape(16.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            val defaultSession = sub.sessions.firstOrNull()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                Text(
+                    text = sub.name,
+                    fontSize = 16.sp,
+                    color = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue,
+                    fontWeight = FontWeight.Bold
+                )
+                if (defaultSession != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = sub.name,
-                        fontSize = 15.sp,
-                        color = NavyBlue,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = defaultSession?.room ?: "",
-                        fontSize = 11.sp,
-                        color = SlateGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .background(Color.White, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isCritical) Icons.Default.Warning else Icons.Default.Check,
-                        contentDescription = null,
-                        tint = if (isCritical) Terracotta else accentColor,
-                        modifier = Modifier.size(14.dp)
+                        text = "Hoy • ${defaultSession.time} | ${defaultSession.room}",
+                        fontSize = 12.sp,
+                        color = com.aistudio.unibuddy.qywvsp.ui.theme.SlateGray,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "${sub.schedule} • ${defaultSession?.time ?: "10:00 AM"} | ${defaultSession?.room ?: ""}",
-                fontSize = 10.sp,
-                color = SlateGray,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Percentage attendance indicator
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LinearProgressIndicator(
-                    progress = fractionUsed.coerceIn(0f, 1f),
-                    color = if (isCritical) Terracotta else if (isWarning) Amber else accentColor,
-                    trackColor = Color.White.copy(alpha = 0.5f),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(6.dp)
-                        .clip(CircleShape)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "$percentageUsed%",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isCritical) Terracotta else NavyBlue
-                )
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = "Has asistido a $subPresCount/${sub.totalClasses} clases",
-                    fontSize = 10.sp,
-                    color = SlateGray,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = if (remaining > 0) "Quedan $remaining de $maxAbs faltas" else "Estado Crítico",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isCritical) Terracotta else NavyBlue
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
             
-            Text(
-                text = "Toca para ver detalles",
-                fontSize = 9.sp,
-                color = SlateGray,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(54.dp)) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    progress = { 1f },
+                    modifier = Modifier.fillMaxSize(),
+                    color = Color.LightGray.copy(alpha = 0.3f),
+                    strokeWidth = 6.dp
+                )
+                androidx.compose.material3.CircularProgressIndicator(
+                    progress = { fractionUsed.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxSize(),
+                    color = statusColor,
+                    strokeWidth = 6.dp
+                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "$subAbsCount",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = statusColor
+                    )
+                    Text("faltas", fontSize = 8.sp, color = com.aistudio.unibuddy.qywvsp.ui.theme.SlateGray)
+                }
+            }
         }
     }
 }
@@ -1290,6 +1247,24 @@ fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int)
         return
     }
 
+    var isLoading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(350)
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundBone),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = ProBlue)
+        }
+        return
+    }
+
     val subjects by viewModel.subjects.collectAsStateWithLifecycle()
     val absences by viewModel.absences.collectAsStateWithLifecycle()
     val attendanceLogs by viewModel.attendanceLogs.collectAsStateWithLifecycle()
@@ -1456,6 +1431,104 @@ fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int)
                         color = NavyBlue,
                         fontWeight = FontWeight.Medium
                     )
+                }
+            }
+        }
+
+        // 2. Today's Classes List (Relocated TodayClassesListWidget)
+        item {
+            val currentDayCode = when (java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)) {
+                java.util.Calendar.MONDAY -> "Lu"
+                java.util.Calendar.TUESDAY -> "Ma"
+                java.util.Calendar.WEDNESDAY -> "Mi"
+                java.util.Calendar.THURSDAY -> "Ju"
+                java.util.Calendar.FRIDAY -> "Vi"
+                java.util.Calendar.SATURDAY -> "Sá"
+                else -> "Do"
+            }
+            val isEvenWeek by viewModel.isEvenWeek.collectAsStateWithLifecycle()
+            val todayClasses = remember(subjects, currentDayCode, isEvenWeek) {
+                subjects.filter { it.schedule.contains(currentDayCode, ignoreCase = true) }
+                    .mapNotNull { sub ->
+                        val session = sub.sessions.firstOrNull { it.day.equals(currentDayCode, ignoreCase = true) }
+                        if (session != null) {
+                            val freq = session.safeFrequency
+                            val matchesParity = when (freq) {
+                                "Semanas Pares" -> isEvenWeek
+                                "Semanas Impares" -> !isEvenWeek
+                                else -> true
+                            }
+                            if (matchesParity) {
+                                val parsed = com.aistudio.unibuddy.qywvsp.ui.parseStartTime(session.time)
+                                if (parsed != null) {
+                                    val (h, m) = parsed
+                                    Triple(sub, session, h * 60 + m)
+                                } else null
+                            } else null
+                        } else null
+                    }.sortedBy { it.third }
+            }
+            
+            Card(
+                modifier = Modifier.fillMaxWidth().testTag("today_classes_widget"),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(0.5.dp, NavyBlue.copy(alpha = 0.15f))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "CLASES PARA HOY",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NavyBlue,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    if (todayClasses.isEmpty()) {
+                        Text(
+                            text = "No tienes clases programadas para hoy.",
+                            fontSize = 11.sp,
+                            color = SlateGray,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            todayClasses.forEach { (sub, session, _) ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(android.graphics.Color.parseColor(sub.colorHex)))
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = sub.name,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = NavyBlue,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            val classTimeFormatted = com.aistudio.unibuddy.qywvsp.ui.formatTimeRange(androidx.compose.ui.platform.LocalContext.current, session.time)
+                                            Text(
+                                                text = "$classTimeFormatted • Salón ${session.room}",
+                                                fontSize = 11.sp,
+                                                color = SlateGray
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1683,8 +1756,7 @@ fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int)
                     }
                 }
             } else {
-                                val chunkedSubjects = subjects.chunked(2)
-                                items(chunkedSubjects, key = { it.first().id }) { pair ->
+                                items(subjects, key = { it.id }) { sub ->
                                     val performAction = { clickedSubject: Subject, isPresent: Boolean, isJustified: Boolean ->
                                         val todayCode = when (Calendar.getInstance().get(Calendar.DAY_OF_WEEK)) {
                                             Calendar.MONDAY -> "Lu"
@@ -1731,28 +1803,16 @@ fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int)
                                             blockedCheckInSubject = clickedSubject
                                         }
                                     }
-                                    Row(
-                        modifier = Modifier.fillMaxWidth().animateItem(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        pair.forEach { sub ->
-                            Box(modifier = Modifier.weight(1f)) {
-                                SubjectGridItem(
-                                    sub = sub,
-                                    absences = absences,
-                                    attendanceLogs = attendanceLogs,
-                                    viewModel = viewModel,
-                                    onSubjectClick = onSubjectClick,
-                                    onCheckInClick = { performAction(it, true, false) },
-                                    onAbsentClick = { performAction(it, false, false) },
-                                    onJustifyClick = { performAction(it, false, true) }
-                                )
-                            }
-                        }
-                        if (pair.size < 2) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
+                                    SubjectGridItem(
+                                        sub = sub,
+                                        absences = absences,
+                                        attendanceLogs = attendanceLogs,
+                                        viewModel = viewModel,
+                                        onSubjectClick = onSubjectClick,
+                                        onCheckInClick = { performAction(it, true, false) },
+                                        onAbsentClick = { performAction(it, false, false) },
+                                        onJustifyClick = { performAction(it, false, true) }
+                                    )
                 }
             }
         }
@@ -1807,537 +1867,66 @@ fun SubjectGradeGridCard(
         (missingAmount / (remainingPercentage / 100.0)).coerceIn(0.0, 100.0)
     } else 0.0
 
-    val roundedGrade = String.format(Locale.US, "%.1f", gradeNeeded)
     val isImpossible = gradeNeeded > 100.0
+    val isApproved = currentWeighted >= targetApprove
+    val isWarning = missingAmount > 0 && remainingPercentage < 30.0 && gradeNeeded > 70.0
 
-    val colors = getSubjectColorPalette(sub.colorHex)
-    val bgColor = colors.first
-    val accentColor = colors.second
+    val statusColor = if (isImpossible || (isWarning && currentPercentage > 50.0)) com.aistudio.unibuddy.qywvsp.ui.theme.StatusRed else if (isWarning) com.aistudio.unibuddy.qywvsp.ui.theme.StatusAmber else if (isApproved) com.aistudio.unibuddy.qywvsp.ui.theme.StatusGreen else com.aistudio.unibuddy.qywvsp.ui.theme.StatusGray
 
-    val hapticFeedback = LocalHapticFeedback.current
+    val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                hapticFeedback.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                 onClick(sub.id)
             }
-            .animateContentSize()
-            .shadow(3.dp, RoundedCornerShape(16.dp)),
-        colors = CardDefaults.cardColors(containerColor = bgColor),
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = com.aistudio.unibuddy.qywvsp.ui.theme.BackgroundBone),
+        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f)),
         shape = RoundedCornerShape(16.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            // Header Info
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = sub.name,
-                        fontSize = 15.sp,
-                        color = NavyBlue,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    val defaultSession = sub.sessions.firstOrNull()
-                    Text(
-                        text = defaultSession?.room ?: "",
-                        fontSize = 10.sp,
-                        color = SlateGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .background(Color.White, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = sub.name,
+                fontSize = 16.sp,
+                color = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Progress bar
             LinearProgressIndicator(
-                progress = (currentWeighted / 100.0).toFloat().coerceIn(0f, 1f),
-                color = accentColor,
-                trackColor = Color.White.copy(alpha = 0.5f),
+                progress = { (currentWeighted / 100.0).toFloat().coerceIn(0f, 1f) },
+                color = statusColor,
+                trackColor = Color.LightGray.copy(alpha = 0.3f),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp)
+                    .height(8.dp)
                     .clip(CircleShape)
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Progreso total:",
-                    fontSize = 10.sp,
-                    color = SlateGray
-                )
-                Text(
-                    text = "${currentPercentage.toInt()}%",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = NavyBlue
-                )
-            }
-            Text(
-                text = "Nota acumulada: ${String.format(Locale.US, "%.1f", currentWeighted)} / 100",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = NavyBlue,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-            Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE2E8F0).copy(alpha = 0.5f)))
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Exams list inside Card (Ponle mas elementos)
-            Text(
-                text = "Exámenes de la materia:",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = NavyBlue.copy(alpha = 0.8f)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            if (assessments.isNotEmpty()) {
-                assessments.take(2).forEach { exam ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 1.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = exam.name,
-                            fontSize = 10.sp,
-                            color = SlateGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = if (exam.grade != null) String.format(Locale.US, "%.1f (%.0f%%)", exam.grade, exam.percentage) else "Pend. (%.0f%%)".format(exam.percentage),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (exam.grade != null) NavyBlue else SlateGray
-                        )
-                    }
-                }
-                if (assessments.size > 2) {
-                    Text(
-                        text = "+ ${assessments.size - 2} exámenes más...",
-                        fontSize = 9.sp,
-                        color = SlateGray,
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
-            } else {
-                Text(
-                    text = "No hay exámenes registrados.",
-                    fontSize = 10.sp,
-                    color = SlateGray,
-                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE2E8F0).copy(alpha = 0.5f)))
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Action Alert target
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        if (isImpossible) Terracotta.copy(alpha = 0.1f) else Color.White,
-                        RoundedCornerShape(8.dp)
-                    )
-                    .border(
-                        1.dp,
-                        if (isImpossible) Terracotta else Color(0xFFE2E8F0),
-                        RoundedCornerShape(8.dp)
-                    )
-                    .padding(6.dp)
-            ) {
-                Column {
-                    Text(
-                        text = if (isImpossible) "No alcanzable" else "Próximo examen necesario",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isImpossible) Terracotta else accentColor
-                    )
-                    Text(
-                        text = if (isImpossible) "Revisar ponderación" else "Necesitás sacar un $roundedGrade",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isImpossible) Terracotta else NavyBlue,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "Toca para simular notas >>",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = SlateGray,
-                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-            )
-        }
-    }
-}
-
-@Composable
-fun VacationScreen(viewModel: UniBuddyViewModel, onConfigureRoute: () -> Unit) {
-    val passedSubjects by viewModel.passedSubjects.collectAsStateWithLifecycle()
-    val university by viewModel.userUniversity.collectAsStateWithLifecycle()
-    val career by viewModel.career.collectAsStateWithLifecycle()
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Bone)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.Star, contentDescription = null, tint = NavyBlue, modifier = Modifier.size(80.dp))
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(
-            text = "¡Estás en Vacaciones!",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = NavyBlue
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Relájate y disfruta. UniBuddy te espera cuando inicies tu nuevo semestre.",
-            fontSize = 16.sp,
-            color = SlateGray,
-            textAlign = TextAlign.Center
-        )
-        
-        if (passedSubjects.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(24.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, SlateGray.copy(alpha = 0.2f))
-            ) {
-                Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
-                    Text("Historial Académico", style = MaterialTheme.typography.titleMedium, color = NavyBlue, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(passedSubjects.toList()) { subCode ->
-                            val subjectName = com.aistudio.unibuddy.qywvsp.data.CurriculumData.getSubjectsFor(university, career).find { it.code == subCode }?.name ?: subCode
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = DarkGreen, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(subjectName, color = SlateGray, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(48.dp))
-        
-        Button(
-            onClick = { viewModel.startNewSemester() },
-            colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth().height(56.dp)
-        ) {
-            Text("Iniciar Nuevo Semestre", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        OutlinedButton(
-            onClick = onConfigureRoute,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            border = BorderStroke(1.dp, NavyBlue)
-        ) {
-            Text("Ir a Configuración", color = NavyBlue)
-        }
-    }
-}
-
-@Composable
-fun AdvancedGradesAnalytics(gradedExams: List<Assessment>, allAssessments: List<Assessment>) {
-    var expanded by remember { mutableStateOf(false) }
-    
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 16.dp)
-            .shadow(2.dp, RoundedCornerShape(16.dp)),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, NavyBlue.copy(alpha = 0.2f)),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = NavyBlue,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Analíticas de Desempeño",
-                        fontWeight = FontWeight.Bold,
-                        color = NavyBlue,
-                        fontSize = 15.sp
-                    )
-                }
-                Text(
-                    text = if (expanded) "Ocultar ▲" else "Ver Análisis ▼",
+                    text = "Nota: ${String.format(java.util.Locale.US, "%.1f", currentWeighted)} / 100",
                     fontSize = 12.sp,
-                    color = NavyBlue,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.ExtraBold,
+                    color = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue
                 )
-            }
-            
-            if (expanded) {
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                if (gradedExams.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Registra notas en tus exámenes para ver las curvas de progreso.",
-                            color = SlateGray,
-                            fontSize = 12.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
-                } else {
-                    Text(
-                        text = "Curva de Progreso de Calificaciones",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SlateGray,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(130.dp)
-                            .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
-                            .padding(8.dp)
-                    ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val w = size.width
-                            val h = size.height
-                            
-                            val paddingLeft = 30f
-                            val paddingRight = 30f
-                            val paddingTop = 20f
-                            val paddingBottom = 20f
-                            
-                            val graphWidth = w - paddingLeft - paddingRight
-                            val graphHeight = h - paddingTop - paddingBottom
-                            
-                            val passingY = paddingTop + graphHeight * (1f - 51.0f / 100.0f)
-                            drawLine(
-                                color = Terracotta.copy(alpha = 0.4f),
-                                start = Offset(paddingLeft, passingY),
-                                end = Offset(w - paddingRight, passingY),
-                                strokeWidth = 3f,
-                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                            )
-                            
-                            val points = gradedExams.map { it.grade ?: 0.0 }
-                            val numPoints = points.size
-                            
-                            if (numPoints > 1) {
-                                val xStep = graphWidth / (numPoints - 1)
-                                val coordinates = points.mapIndexed { idx, grade ->
-                                    val x = paddingLeft + idx * xStep
-                                    val y = paddingTop + graphHeight * (1f - grade.toFloat() / 100.0f)
-                                    Offset(x, y)
-                                }
-                                
-                                val fillPath = Path().apply {
-                                    moveTo(coordinates.first().x, h - paddingBottom)
-                                    coordinates.forEach { lineTo(it.x, it.y) }
-                                    lineTo(coordinates.last().x, h - paddingBottom)
-                                    close()
-                                }
-                                drawPath(
-                                    path = fillPath,
-                                    color = MintGreen.copy(alpha = 0.15f)
-                                )
-                                
-                                val strokePath = Path().apply {
-                                    moveTo(coordinates.first().x, coordinates.first().y)
-                                    for (i in 1 until coordinates.size) {
-                                        lineTo(coordinates[i].x, coordinates[i].y)
-                                    }
-                                }
-                                drawPath(
-                                    path = strokePath,
-                                    color = DarkGreen,
-                                    style = Stroke(width = 6f, cap = StrokeCap.Round)
-                                )
-                                
-                                coordinates.forEachIndexed { idx, offset ->
-                                    drawCircle(
-                                        color = DarkGreen,
-                                        radius = 8f,
-                                        center = offset
-                                    )
-                                    drawCircle(
-                                        color = Color.White,
-                                        radius = 4f,
-                                        center = offset
-                                    )
-                                }
-                            } else {
-                                val x = paddingLeft + graphWidth / 2f
-                                val y = paddingTop + graphHeight * (1f - points[0].toFloat() / 100.0f)
-                                drawCircle(
-                                    color = DarkGreen,
-                                    radius = 8f,
-                                    center = Offset(x, y)
-                                )
-                                drawCircle(
-                                    color = Color.White,
-                                    radius = 4f,
-                                    center = Offset(x, y)
-                                )
-                            }
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    val pendingExams = allAssessments.filter { it.grade == null }
-                    val gradedExamsSum = gradedExams.sumOf { (it.grade ?: 0.0) * (it.percentage / 100.0) }
-                    val completedPercentage = gradedExams.sumOf { it.percentage }
-                    val remainingPercentage = (100.0 - completedPercentage).coerceAtLeast(0.0)
-                    
-                    if (remainingPercentage > 0.0) {
-                        val neededToPass = ((51.0 - gradedExamsSum) / (remainingPercentage / 100.0)).coerceIn(0.0, 100.0)
-                        val neededToExcel = ((85.0 - gradedExamsSum) / (remainingPercentage / 100.0)).coerceIn(0.0, 100.0)
-                        
-                        Text(
-                            text = "Estimador Académico (Exámenes Pendientes)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NavyBlue,
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
-                        
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Porcentaje por evaluar:", fontSize = 11.sp, color = SlateGray)
-                                    Text("${remainingPercentage.toInt()}%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NavyBlue)
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Nota necesaria para aprobar (51.0):", fontSize = 11.sp, color = SlateGray)
-                                    val neededPassFormatted = String.format(Locale.US, "%.1f", neededToPass)
-                                    Text(
-                                        text = if (neededToPass <= 0.0) "Ya aprobado" else neededPassFormatted,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (neededToPass <= 0.0) DarkGreen else if (neededToPass > 95.0) Terracotta else NavyBlue
-                                    )
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Nota para promedio de Honor (85.0):", fontSize = 11.sp, color = SlateGray)
-                                    val neededExcelFormatted = String.format(Locale.US, "%.1f", neededToExcel)
-                                    Text(
-                                        text = if (neededToExcel <= 0.0) "Ya alcanzado" else if (neededToExcel > 100.0) "Fuera de alcance" else neededExcelFormatted,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (neededToExcel <= 0.0) DarkGreen else if (neededToExcel > 100.0) Terracotta else NavyBlue
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = DarkGreen, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "¡Semestre completo! Has calificado todos tus exámenes.",
-                                    fontSize = 11.sp,
-                                    color = DarkGreen,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-                }
+                Text(
+                    text = "${currentPercentage.toInt()}% evaluado",
+                    fontSize = 12.sp,
+                    color = com.aistudio.unibuddy.qywvsp.ui.theme.SlateGray
+                )
             }
         }
     }
 }
-
 @Composable
 fun GradesOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> Unit, onConfigureRoute: () -> Unit) {
     val semesterState by viewModel.semesterState.collectAsStateWithLifecycle()
@@ -2346,8 +1935,27 @@ fun GradesOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> 
         return
     }
 
+    var isLoading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(350)
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundBone),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = ProBlue)
+        }
+        return
+    }
+
     val subjects by viewModel.subjects.collectAsStateWithLifecycle()
     val allAssessments by viewModel.assessments.collectAsStateWithLifecycle(emptyList())
+    val tasks by viewModel.tasks.collectAsStateWithLifecycle(emptyList())
     var searchQuery by remember { mutableStateOf("") }
 
     Column(
@@ -2393,6 +2001,7 @@ fun GradesOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> 
                 }
             }
         } else {
+            var showAdvancedAnalytics by remember { mutableStateOf(false) }
             val subjectsCount = subjects.size
             val gradedExams = allAssessments.filter { it.grade != null }
             val overallGPA = if (gradedExams.isNotEmpty()) {
@@ -2516,6 +2125,22 @@ fun GradesOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> 
                             lineHeight = 13.sp
                         )
                     }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                        onClick = { showAdvancedAnalytics = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = ProBlue),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.TrendingUp,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Ver Análisis Avanzado", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
                 }
             }
 
@@ -2528,34 +2153,299 @@ fun GradesOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int) -> 
                     }
                 }
             }
-            val chunkedSubjects = remember(filteredSubjects) { filteredSubjects.chunked(2) }
+
+            if (showAdvancedAnalytics) {
+                AdvancedGradesAnalytics(
+                    gradedExams = gradedExams,
+                    allAssessments = allAssessments,
+                    onDismiss = { showAdvancedAnalytics = false }
+                )
+            }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 item {
-                    AdvancedGradesAnalytics(gradedExams = gradedExams, allAssessments = allAssessments)
+                    UpcomingAssessmentsWidget(
+                        assessments = allAssessments,
+                        subjects = subjects,
+                        onNavigateToSubject = onSubjectClick
+                    )
+                }
+
+                item {
+                    UpcomingTasksWidget(
+                        tasks = tasks,
+                        subjects = subjects,
+                        onToggleTask = { viewModel.toggleTask(it) },
+                        onNavigateToSubject = onSubjectClick
+                    )
                 }
                 
                 item {
                     PredictiveGradeCalculatorWidget(subjects = subjects, viewModel = viewModel)
                 }
                 
-                items(chunkedSubjects, key = { it.first().id }) { rowSubjects ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().animateItem(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                items(filteredSubjects, key = { it.id }) { sub ->
+                    SubjectGradeGridCard(sub, viewModel, onSubjectClick)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UpcomingTasksWidget(
+    tasks: List<com.aistudio.unibuddy.qywvsp.data.Task>,
+    subjects: List<com.aistudio.unibuddy.qywvsp.data.Subject>,
+    onToggleTask: (com.aistudio.unibuddy.qywvsp.data.Task) -> Unit,
+    onNavigateToSubject: (Int) -> Unit
+) {
+    val pendingTasks = remember(tasks) {
+        tasks.filter { !it.isCompleted }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("upcoming_tasks_widget"),
+        colors = CardDefaults.cardColors(containerColor = com.aistudio.unibuddy.qywvsp.ui.theme.BackgroundBone),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(0.5.dp, NavyBlue.copy(alpha = 0.15f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Assignment,
+                        contentDescription = null,
+                        tint = NavyBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "PRÓXIMAS ENTREGAS",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NavyBlue,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+                
+                if (pendingTasks.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Terracotta)
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
                     ) {
-                        rowSubjects.forEach { sub ->
-                            Box(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                SubjectGradeGridCard(sub, viewModel, onSubjectClick)
+                        Text(
+                            text = "${pendingTasks.size} pendientes",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            if (pendingTasks.isEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White, RoundedCornerShape(12.dp))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.CheckCircle,
+                        contentDescription = null,
+                        tint = DarkGreen,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "¡Al día con tus entregas!",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NavyBlue
+                        )
+                        Text(
+                            text = "No tienes tareas ni laboratorios pendientes hoy.",
+                            fontSize = 11.sp,
+                            color = SlateGray
+                        )
+                    }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    pendingTasks.take(3).forEach { task ->
+                        val subject = subjects.find { it.id == task.subjectId }
+                        val subjectColor = remember(subject) {
+                            try { Color(android.graphics.Color.parseColor(subject?.colorHex ?: "#1B5E20")) } catch(e: Exception) { DarkGreen }
+                        }
+                        
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White, RoundedCornerShape(12.dp))
+                                .clickable { subject?.let { onNavigateToSubject(it.id) } }
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Checkbox(
+                                    checked = task.isCompleted,
+                                    onCheckedChange = { onToggleTask(task) },
+                                    colors = CheckboxDefaults.colors(checkedColor = DarkGreen)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Column {
+                                    Text(
+                                        text = task.title,
+                                        fontWeight = FontWeight.Bold,
+                                        color = NavyBlue,
+                                        fontSize = 12.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        // Subject bullet
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(subjectColor))
+                                            Text(subject?.name ?: "Materia", fontSize = 10.sp, color = SlateGray, fontWeight = FontWeight.Bold)
+                                        }
+                                        
+                                        // Badge for type
+                                        val badgeBg = when (task.type) {
+                                            "Laboratorio" -> MintGreen.copy(alpha=0.1f)
+                                            "Proyecto" -> ProBlue.copy(alpha=0.1f)
+                                            "Examen" -> Terracotta.copy(alpha=0.1f)
+                                            else -> BackgroundGray
+                                        }
+                                        val badgeTxt = when (task.type) {
+                                            "Laboratorio" -> MintGreen
+                                            "Proyecto" -> ProBlue
+                                            "Examen" -> Terracotta
+                                            else -> SlateGray
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(badgeBg)
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(task.type, fontSize = 8.sp, fontWeight = FontWeight.Bold, color = badgeTxt)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Due Date
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(10.dp), tint = Terracotta)
+                                Text(task.dueDate, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = Terracotta)
                             }
                         }
-                        if (rowSubjects.size == 1) {
-                            Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UpcomingAssessmentsWidget(
+    assessments: List<com.aistudio.unibuddy.qywvsp.data.Assessment>,
+    subjects: List<com.aistudio.unibuddy.qywvsp.data.Subject>,
+    onNavigateToSubject: (Int) -> Unit
+) {
+    val pendingAssessments = remember(assessments) {
+        val format = java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        assessments.filter { it.grade == null && it.examDate.isNotBlank() }
+            .sortedBy { 
+                try { format.parse(it.examDate)?.time ?: Long.MAX_VALUE } 
+                catch (e: Exception) { Long.MAX_VALUE }
+            }
+            .take(5)
+    }
+
+    if (pendingAssessments.isEmpty()) return
+
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("upcoming_assessments_widget"),
+        colors = CardDefaults.cardColors(containerColor = ProBlue.copy(alpha=0.05f)),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(0.5.dp, ProBlue.copy(alpha = 0.3f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(
+                    imageVector = Icons.Default.DateRange,
+                    contentDescription = null,
+                    tint = ProBlue,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "SEMANA DE EXÁMENES",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = ProBlue,
+                    letterSpacing = 0.5.sp
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                pendingAssessments.forEach { ass ->
+                    val subject = subjects.find { it.id == ass.subjectId }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White)
+                            .clickable { onNavigateToSubject(ass.subjectId) }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = ass.name,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NavyBlue
+                            )
+                            if (subject != null) {
+                                Text(
+                                    text = subject.name,
+                                    fontSize = 11.sp,
+                                    color = SlateGray
+                                )
+                            }
+                        }
+                        
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = ass.examDate,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Terracotta
+                            )
+                            Text(
+                                text = "${ass.percentage} pts",
+                                fontSize = 10.sp,
+                                color = SlateGray,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -2586,6 +2476,24 @@ fun SubjectGradesScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: ()
     var forceUnlockC2 by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     val currentWeek by viewModel.currentWeekOfSemester.collectAsStateWithLifecycle()
     var assessmentToDelete by remember { mutableStateOf<com.aistudio.unibuddy.qywvsp.data.Assessment?>(null) }
+
+    var isLoading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(350)
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundBone),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = ProBlue)
+        }
+        return
+    }
 
     if (subject == null) {
         onBack()
@@ -3695,4 +3603,42 @@ fun PredictiveGradeCalculatorWidget(subjects: List<Subject>, viewModel: UniBuddy
             }
         }
     }
+}
+@Composable
+fun VacationScreen(viewModel: UniBuddyViewModel, onConfigureRoute: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        BuddyMascot(modifier = Modifier.size(150.dp), pose = "sleeping", mainColor = com.aistudio.unibuddy.qywvsp.ui.theme.ProBlue)
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "¡Estás de Vacaciones!",
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            color = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Disfruta tu tiempo libre, recarga energías y prepárate para el próximo semestre.",
+            fontSize = 14.sp,
+            color = com.aistudio.unibuddy.qywvsp.ui.theme.SlateGray,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
+
+@Composable
+fun AdvancedGradesAnalytics(
+    gradedExams: List<com.aistudio.unibuddy.qywvsp.data.Assessment>,
+    allAssessments: List<com.aistudio.unibuddy.qywvsp.data.Assessment>,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Análisis Avanzado", color = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
+        text = { Text("No hay suficientes datos históricos para un análisis predictivo completo.") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } }
+    )
 }

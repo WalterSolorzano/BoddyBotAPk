@@ -7,6 +7,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.material.icons.Icons
@@ -14,6 +15,11 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.launch
+import android.widget.Toast
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -46,6 +52,24 @@ import java.util.Calendar
 
 @Composable
 fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit) {
+    var isLoading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(350)
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundBone),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = ProBlue)
+        }
+        return
+    }
+
     val username by viewModel.username.collectAsStateWithLifecycle()
     val buddyColorStr by viewModel.buddyColor.collectAsStateWithLifecycle()
     val mainBuddyColor = Color(android.graphics.Color.parseColor(buddyColorStr))
@@ -118,10 +142,10 @@ fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit)
         // Grid Layout for Settings
         val gridItems = listOf(
             ConfigGridItem("Perfil", Icons.Default.Person, "Nombre, Foto, Carrera") { showProfileDialog = true },
-            ConfigGridItem("Mascota", Icons.Default.Face, "Accesorios y Color") { showBuddyDialog = true },
+            ConfigGridItem("Mascota", Icons.Default.Pets, "Accesorios y Color") { showBuddyDialog = true },
             ConfigGridItem("Rutas", Icons.Default.Place, "Origen, Destino, GPS") { showRouteDialog = true },
             ConfigGridItem("Historial", Icons.Default.Menu, "Estadísticas pasadas") { showHistoryDialog = true },
-            ConfigGridItem("Pensum", Icons.Default.DateRange, "Progreso de Carrera") { onNavigateToPensum() },
+            ConfigGridItem("Pensum", Icons.Default.School, "Progreso de Carrera") { onNavigateToPensum() },
             ConfigGridItem("Semestre", Icons.Default.DateRange, "Inicio, Notas, Feriados") { showSemesterDialog = true },
             ConfigGridItem("Importar PDF", Icons.Default.Info, "Historial de Notas") { showPdfImportDialog = true },
             ConfigGridItem("Insignias", Icons.Default.Star, "Logros y Medallas") { showBadgeDialog = true },
@@ -397,6 +421,26 @@ fun BuddyCustomizationDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit
     val accessory by viewModel.buddyAccessory.collectAsStateWithLifecycle()
     val buddyColorStr by viewModel.buddyColor.collectAsStateWithLifecycle()
     val buddyPose by viewModel.buddyPose.collectAsStateWithLifecycle()
+    val badges by viewModel.badges.collectAsStateWithLifecycle()
+    
+    val accessoryRequirements = mapOf(
+        "hat" to "Primeros Pasos",
+        "cap" to "Estudiante Responsable",
+        "glasses" to "Concentración Total",
+        "sunglasses" to "En el Top"
+    )
+    
+    val isAccessoryUnlocked: (String) -> Boolean = { acc ->
+        if (acc == "none") true
+        else {
+            val reqBadge = accessoryRequirements[acc]
+            if (reqBadge != null) {
+                badges.find { it.name == reqBadge }?.isUnlocked == true
+            } else {
+                true
+            }
+        }
+    }
     
     val accessories = listOf("none", "hat", "cap", "glasses", "sunglasses", "scarf")
     val accessoriesLabels = mapOf(
@@ -441,10 +485,23 @@ fun BuddyCustomizationDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit
                 Text("Accesorio", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = NavyBlue)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(accessories) { acc ->
+                        val unlocked = isAccessoryUnlocked(acc)
                         FilterChip(
-                            selected = accessory == acc,
-                            onClick = { viewModel.saveBuddyCustomization(acc, buddyColorStr) },
-                            label = { Text(accessoriesLabels[acc] ?: acc.replaceFirstChar { it.uppercase() }) },
+                            selected = accessory == acc && unlocked,
+                            onClick = { 
+                                if (unlocked) {
+                                    viewModel.saveBuddyCustomization(acc, buddyColorStr)
+                                }
+                            },
+                            label = { 
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (!unlocked) {
+                                        Icon(Icons.Default.Lock, contentDescription = "Locked", modifier = Modifier.size(12.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
+                                    Text(accessoriesLabels[acc] ?: acc.replaceFirstChar { it.uppercase() })
+                                }
+                            },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = NavyBlue.copy(alpha = 0.15f),
                                 selectedLabelColor = NavyBlue
@@ -742,6 +799,25 @@ fun PdfImportDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
                         val parsedSubjects = parser.parsePdfText(text)
                         
                         if (parsedSubjects.isNotEmpty()) {
+                            val uni = viewModel.userUniversity.value
+                            val career = viewModel.career.value
+                            val staticSubjects = com.aistudio.unibuddy.qywvsp.data.CurriculumData.getSubjectsFor(
+                                uni.ifEmpty { "UNI" },
+                                career.ifEmpty { "Ing. Industrial" }
+                            )
+                            parsedSubjects.forEach { parsed ->
+                                var matched = staticSubjects.find {
+                                    it.code.equals(parsed.code, ignoreCase = true) ||
+                                    it.name.equals(parsed.name, ignoreCase = true)
+                                }
+                                if (matched == null) {
+                                    matched = staticSubjects.find {
+                                        com.aistudio.unibuddy.qywvsp.data.FuzzyMatch.isSimilar(it.name, parsed.name)
+                                    }
+                                }
+                                parsed.matchedCode = matched?.code
+                                parsed.matchedName = matched?.name
+                            }
                             parsedSubjectsToConfirm = parsedSubjects
                         } else {
                             resultMessage = "No se encontraron registros académicos con el formato estándar en este PDF."
@@ -765,14 +841,31 @@ fun PdfImportDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) {
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 if (parsedSubjectsToConfirm.isNotEmpty()) {
-                    Text("Se capturaron ${parsedSubjectsToConfirm.size} materias. Confirma para guardar:", fontWeight = FontWeight.Bold, color = DarkGreen)
+                    Text("Se capturaron ${parsedSubjectsToConfirm.size} materias. Confirma y ajusta:", fontWeight = FontWeight.Bold, color = DarkGreen)
                     Spacer(modifier = Modifier.height(8.dp))
-                    androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
-                        items(parsedSubjectsToConfirm) { sub ->
+                    androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                        itemsIndexed(parsedSubjectsToConfirm) { index, sub ->
                             Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = Bone)) {
                                 Column(modifier = Modifier.padding(8.dp)) {
-                                    Text(sub.name, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = NavyBlue)
-                                    Text("Grupo: ${sub.group} | Nota: ${sub.grade} | Créditos: ${sub.credits} | Estado: ${sub.status.name}", fontSize = 11.sp, color = SlateGray)
+                                    Text("Extraído: ${sub.name} (${sub.code})", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = NavyBlue)
+                                    Text("Nota: ${sub.grade} | ${sub.status.name}", fontSize = 11.sp, color = SlateGray)
+                                    
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(if (sub.matchedName != null) "Emparejado con: ${sub.matchedName}" else "Sin coincidencia en pensum", 
+                                        color = if (sub.matchedName != null) DarkGreen else Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    OutlinedTextField(
+                                        value = sub.professorName,
+                                        onValueChange = { 
+                                            val newList = parsedSubjectsToConfirm.toMutableList()
+                                            newList[index] = sub.copy(professorName = it)
+                                            parsedSubjectsToConfirm = newList
+                                        },
+                                        label = { Text("Profesor (Opcional)", fontSize = 10.sp) },
+                                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp)
+                                    )
                                 }
                             }
                         }
@@ -1001,6 +1094,7 @@ fun SemesterSettingsDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) 
     }
 
     var showHolidayPicker by remember { mutableStateOf(false) }
+    var showAdvancedAdjuster by remember { mutableStateOf(false) }
     val holidayPickerState = rememberDatePickerState(
         initialSelectedDateMillis = Calendar.getInstance().timeInMillis
     )
@@ -1062,6 +1156,29 @@ fun SemesterSettingsDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit) 
                     color = SlateGray,
                     fontWeight = FontWeight.Medium
                 )
+
+                Button(
+                    onClick = { showAdvancedAdjuster = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = ProBlue),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.EditCalendar,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Ajustar Semana y Paridad (Avanzado)", color = Color.White, fontSize = 12.sp)
+                }
+
+                if (showAdvancedAdjuster) {
+                    AcademicCalendarAdjusterDialog(
+                        viewModel = viewModel,
+                        onDismiss = { showAdvancedAdjuster = false }
+                    )
+                }
 
                 HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f), thickness = 1.dp)
 

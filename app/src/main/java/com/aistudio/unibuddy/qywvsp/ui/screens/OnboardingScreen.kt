@@ -58,22 +58,29 @@ fun OsmMapView(modifier: Modifier = Modifier, locationEnabled: Boolean) {
         Configuration.getInstance().userAgentValue = context.packageName
     }
     
-    LaunchedEffect(locationEnabled, mapViewRef) {
-        val map = mapViewRef ?: return@LaunchedEffect
-        if (locationEnabled) {
+    DisposableEffect(locationEnabled, mapViewRef) {
+        val map = mapViewRef
+        var myLocationOverlay: org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay? = null
+        if (map != null && locationEnabled) {
             val existing = map.overlays.filterIsInstance<org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay>().firstOrNull()
             if (existing == null) {
-                val myLocationOverlay = org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay(
+                val overlay = org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay(
                     org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider(context), map
                 )
-                myLocationOverlay.enableMyLocation()
-                myLocationOverlay.enableFollowLocation()
-                map.overlays.add(myLocationOverlay)
+                overlay.enableMyLocation()
+                overlay.enableFollowLocation()
+                map.overlays.add(overlay)
                 map.invalidate()
+                myLocationOverlay = overlay
             } else {
                 existing.enableMyLocation()
                 existing.enableFollowLocation()
+                myLocationOverlay = existing
             }
+        }
+        onDispose {
+            myLocationOverlay?.disableMyLocation()
+            myLocationOverlay?.disableFollowLocation()
         }
     }
     
@@ -119,6 +126,7 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
     val subjectSessions = remember { mutableStateMapOf<String, List<ClassSessionDetails>>() }
     
     var originInput by rememberSaveable { mutableStateOf("") }
+    var destInput by rememberSaveable { mutableStateOf("") }
     var baseTravelMinutes by rememberSaveable { mutableStateOf("25") }
 
     // Auto-update enrolled subjects when selectedSemester, uniInput, or careerInput changes
@@ -127,16 +135,8 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
         val matchingCurriculum = CurriculumData.getSubjectsFor(uniInput, careerInput).filter { it.semester == selectedSemester }
         enrolledSubjects.addAll(matchingCurriculum)
         
-        // Auto-populate default schedules for conflict-free start
         subjectSessions.clear()
-        val days = listOf("Lu", "Ma", "Mi", "Ju", "Vi")
-        val blocks = listOf("M1", "M2", "M3", "T1", "T2", "T3")
-        
-        matchingCurriculum.forEachIndexed { index, subject ->
-            val day = days[index % days.size]
-            val block = blocks[index % blocks.size]
-            subjectSessions[subject.name] = listOf(ClassSessionDetails(day, block, "Aula por definir"))
-        }
+        // No auto-populate, let user define.
     }
 
     Box(
@@ -242,12 +242,14 @@ fun OnboardingScreen(viewModel: UniBuddyViewModel, onFinished: () -> Unit) {
                     Step5Route(
                         originInput = originInput,
                         onOriginChange = { originInput = it },
+                        destInput = destInput,
+                        onDestChange = { destInput = it },
                         baseTravelMinutes = baseTravelMinutes,
                         onTravelMinutesChange = { baseTravelMinutes = it },
                         locationPermissionsState = locationPermissionsState,
                         onFinish = {
                             // Save user settings
-                            viewModel.saveRoute(originInput, "Universidad")
+                            viewModel.saveRoute(originInput, destInput)
                             baseTravelMinutes.toIntOrNull()?.let { viewModel.saveBaseTravelTime(it) }
                             viewModel.saveBuddyPose("happy")
                             
@@ -1129,6 +1131,8 @@ fun Step4ScheduleConfig(
 fun Step5Route(
     originInput: String,
     onOriginChange: (String) -> Unit,
+    destInput: String,
+    onDestChange: (String) -> Unit,
     baseTravelMinutes: String,
     onTravelMinutesChange: (String) -> Unit,
     locationPermissionsState: com.google.accompanist.permissions.MultiplePermissionsState,

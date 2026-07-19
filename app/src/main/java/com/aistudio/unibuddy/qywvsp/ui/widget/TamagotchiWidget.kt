@@ -8,6 +8,9 @@ import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
+import java.io.File
+import java.util.Calendar
+import android.graphics.BitmapFactory
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -40,6 +43,7 @@ class TamagotchiWidget : GlanceAppWidget() {
         val database = AppDatabase.getDatabase(context)
         val logs = database.attendanceLogDao().getAllLogs().first()
         val absences = database.absenceDao().getAllAbsences().first()
+        val assessments = database.assessmentDao().getAllAssessments().first()
 
         // Calculate actual attendance rate
         val totalPres = logs.count { it.isPresent }
@@ -58,6 +62,32 @@ class TamagotchiWidget : GlanceAppWidget() {
             attendanceRate >= 70.0 -> "Buddy: Algo cansado"
             attendanceRate >= 50.0 -> "Buddy: ¡Enfermo!"
             else -> "Buddy: ¡Grave! Ve a clase"
+        }
+
+        val calendar = Calendar.getInstance()
+        val currentDayCode = when (calendar.get(Calendar.DAY_OF_WEEK)) {
+            Calendar.MONDAY -> "Lu"
+            Calendar.TUESDAY -> "Ma"
+            Calendar.WEDNESDAY -> "Mi"
+            Calendar.THURSDAY -> "Ju"
+            Calendar.FRIDAY -> "Vi"
+            Calendar.SATURDAY -> "Sá"
+            else -> "Do"
+        }
+        val fullDateStr = java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(calendar.time)
+        val examTomorrow = assessments.firstOrNull { it.grade == null && (it.examDate.trim().equals(currentDayCode, ignoreCase = true) || it.examDate == fullDateStr) }
+        
+        val hasExam = examTomorrow != null
+        val hasRisk = absences.size >= 3
+        
+        val criticalEvent = if (hasExam && hasRisk) {
+            if (calendar.get(Calendar.MINUTE) % 2 == 0) "¡EXAMEN MAÑANA!" else "¡RIESGO DE FALTA!"
+        } else if (hasExam) {
+            "¡EXAMEN MAÑANA!"
+        } else if (hasRisk) {
+            "¡RIESGO DE FALTA!"
+        } else {
+            "Todo bajo control"
         }
 
         // Color palette matching the gorgeous night blue theme of AcademicWeatherWidget
@@ -90,8 +120,24 @@ class TamagotchiWidget : GlanceAppWidget() {
 
                     Spacer(modifier = GlanceModifier.height(6.dp))
 
+                    val widgetFile = File(context.filesDir, "widget_pet_current.png")
+                    val imageProvider = if (widgetFile.exists()) {
+                        try {
+                            val bitmap = BitmapFactory.decodeFile(widgetFile.absolutePath)
+                            if (bitmap != null) {
+                                ImageProvider(bitmap)
+                            } else {
+                                ImageProvider(R.drawable.buddy_tamagotchi_happy_avatar)
+                            }
+                        } catch (e: Exception) {
+                            ImageProvider(R.drawable.buddy_tamagotchi_happy_avatar)
+                        }
+                    } else {
+                        ImageProvider(R.drawable.buddy_tamagotchi_happy_avatar)
+                    }
+
                     Image(
-                        provider = ImageProvider(R.drawable.buddy_tamagotchi_happy_avatar),
+                        provider = imageProvider,
                         contentDescription = "Buddy Mascot",
                         modifier = GlanceModifier.size(80.dp) // Large hero layout size - extremely visible!
                     )
@@ -140,6 +186,15 @@ class TamagotchiWidget : GlanceAppWidget() {
                         style = TextStyle(
                             color = ColorProvider(textWhite),
                             fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    Spacer(modifier = GlanceModifier.height(4.dp))
+                    Text(
+                        text = criticalEvent,
+                        style = TextStyle(
+                            color = ColorProvider(if (criticalEvent == "Todo bajo control") textColorSecondary else Color(0xFFFF5252)),
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
                     )

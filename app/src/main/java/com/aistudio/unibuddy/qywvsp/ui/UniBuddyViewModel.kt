@@ -54,6 +54,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 repository.getSetting("buddy_accessory")?.let { _buddyAccessory.value = it }
                 repository.getSetting("buddy_color")?.let { _buddyColor.value = it }
                 repository.getSetting("google_maps_api_key")?.let { _googleMapsApiKey.value = it }
+                repository.getSetting("weekly_streak_count")?.let { _weeklyStreak.value = it.toIntOrNull() ?: 0 }
                 try { repository.getSetting("onboarding_completed")?.let { _isOnboardingCompleted.value = it.toBoolean() } } catch(e: Exception) {}
                 try { repository.getSetting("dark_mode")?.let { _isDarkMode.value = it.toBoolean() } } catch(e: Exception) {}
                 repository.getSetting("arrival_margin_preference")?.let { _arrivalMarginPreference.value = it }
@@ -74,6 +75,14 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                 try { repository.getSetting("custom_holidays")?.let {
                     if (it.isNotEmpty()) _customHolidays.value = it.split(",").mapNotNull { ms -> ms.toLongOrNull() }
                 } } catch(e: Exception) {}
+                
+                try { repository.getSetting("custom_suspended_weeks")?.let {
+                    if (it.isNotEmpty()) _customSuspendedWeeks.value = it.split(",").mapNotNull { idx -> idx.trim().toIntOrNull() }.toSet()
+                } } catch(e: Exception) {}
+                try { repository.getSetting("parity_override_week")?.let { _parityOverrideWeek.value = it.toInt() } } catch(e: Exception) {}
+                try { repository.getSetting("parity_override_val")?.let { _parityOverrideVal.value = it } } catch(e: Exception) {}
+                try { repository.getSetting("user_custom_week_offset")?.let { _userCustomWeekOffset.value = it.toInt() } } catch(e: Exception) {}
+                try { repository.getSetting("last_calendar_query_time")?.let { _lastCalendarQueryTime.value = it.toLong() } } catch(e: Exception) {}
                 
                 try {
                     val allSettings = repository.getAllSettings()
@@ -122,7 +131,31 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun notifyWidgets() {
-        com.aistudio.unibuddy.qywvsp.ui.widget.WidgetUpdater.updateAllWidgets(getApplication())
+        viewModelScope.launch {
+            try {
+                val calendar = java.util.Calendar.getInstance()
+                val currentHour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
+                val dayOfYear = calendar.get(java.util.Calendar.DAY_OF_YEAR)
+                val weatherState = if (currentHour in 6..18) {
+                    if (dayOfYear % 3 == 0) "rainy" else "sunny"
+                } else {
+                    "night"
+                }
+                
+                com.aistudio.unibuddy.qywvsp.ui.widget.PetBitmapRenderer.generateAndSavePetBitmap(
+                    context = getApplication(),
+                    pose = _buddyPose.value,
+                    accessory = _buddyAccessory.value,
+                    isHappy = true,
+                    isWorried = false,
+                    weatherState = weatherState,
+                    mainColorHex = _buddyColor.value
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            com.aistudio.unibuddy.qywvsp.ui.widget.WidgetUpdater.updateAllWidgets(getApplication())
+        }
     }
 
     private suspend fun checkAndTriggerProactiveNotifications() {
@@ -145,6 +178,32 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         val currentSubjects = repository.subjects.first()
         val todayClasses = currentSubjects.filter { it.schedule.contains(dayCode, ignoreCase = true) }
         
+        // 0. Anticipated Risk Notification (A una falta del riesgo)
+        for (sub in currentSubjects) {
+            val allAbs = repository.attendanceLogs.first().filter { it.subjectId == sub.id && !it.isPresent }
+            val maxAbs = sub.totalClasses - kotlin.math.ceil(sub.totalClasses * (sub.requiredAttendancePercent / 100.0)).toInt()
+            val remaining = (maxAbs - allAbs.size).coerceAtLeast(0)
+            
+            val dbKey = "risk_notified_${sub.id}"
+            val lastNotifiedRemaining = repository.getSetting(dbKey)?.toIntOrNull()
+
+            if (remaining == 3) {
+                if (lastNotifiedRemaining != 3) {
+                    repository.saveSetting(dbKey, "3")
+                    NotificationHelper.sendNotification(
+                        getApplication(),
+                        "Riesgo Anticipado",
+                        "Estás a una falta de entrar en zona de riesgo en ${sub.name}. ¡No faltes!"
+                    )
+                }
+            } else {
+                // Reset the flag if they go below or above the threshold
+                if (lastNotifiedRemaining == 3) {
+                    repository.saveSetting(dbKey, remaining.toString())
+                }
+            }
+        }
+
         // 1. Tienes Examen Hoy
         val allAssessments = repository.assessments.first()
         val todayExams = allAssessments.filter { it.examDate == todayFullStr }
@@ -289,7 +348,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         repository.saveSetting("home_address", "Definir en perfil")
         repository.saveSetting("work_address", "Definir en perfil")
         repository.saveSetting("buddy_accessory", "none")
-        repository.saveSetting("buddy_color", "#4CAF50")
+        repository.saveSetting("buddy_color", "#0F172A")
     }
 
     // Dynamic UI State
@@ -373,6 +432,14 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     val tasks: StateFlow<List<Task>> = repository.tasks
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val seasonRecaps: StateFlow<List<com.aistudio.unibuddy.qywvsp.data.SeasonRecap>> = repository.seasonRecaps
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _showSeasonRecap = kotlinx.coroutines.flow.MutableStateFlow<com.aistudio.unibuddy.qywvsp.data.SeasonRecap?>(null)
+    val showSeasonRecap: kotlinx.coroutines.flow.StateFlow<com.aistudio.unibuddy.qywvsp.data.SeasonRecap?> = _showSeasonRecap.asStateFlow()
+    fun dismissSeasonRecap() { _showSeasonRecap.value = null }
+
+    val allProfessors: Flow<List<com.aistudio.unibuddy.qywvsp.data.Professor>> = repository.getAllProfessors()
+
     // Settings flows
     private val _origin = MutableStateFlow("Casa")
     val origin: StateFlow<String> = _origin.asStateFlow()
@@ -442,6 +509,21 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private val _customSuspendedWeeks = MutableStateFlow<Set<Int>>(emptySet())
+    val customSuspendedWeeks: StateFlow<Set<Int>> = _customSuspendedWeeks.asStateFlow()
+
+    private val _parityOverrideWeek = MutableStateFlow<Int>(-1)
+    val parityOverrideWeek: StateFlow<Int> = _parityOverrideWeek.asStateFlow()
+
+    private val _parityOverrideVal = MutableStateFlow<String>("")
+    val parityOverrideVal: StateFlow<String> = _parityOverrideVal.asStateFlow()
+
+    private val _userCustomWeekOffset = MutableStateFlow<Int>(0)
+    val userCustomWeekOffset: StateFlow<Int> = _userCustomWeekOffset.asStateFlow()
+
+    private val _lastCalendarQueryTime = MutableStateFlow<Long>(0L)
+    val lastCalendarQueryTime: StateFlow<Long> = _lastCalendarQueryTime.asStateFlow()
+
     private val _semesterStartDate = MutableStateFlow<Long?>(null)
     val semesterStartDate: StateFlow<Long?> = _semesterStartDate.asStateFlow()
 
@@ -452,70 +534,493 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // 1-14: Clases, 15-16: Exámenes, 17: Recuperación, >17: Vacaciones
-    val currentWeekOfSemester = _semesterStartDate.map { start ->
-        if (start == null) return@map -1
-        val now = System.currentTimeMillis()
-        if (now < start) return@map 1
+    // 2026 Academic Calendar state and data structures
+    data class SemesterWeekState(
+        val semesterName: String,
+        val calendarWeekNumber: Int,
+        val academicWeekNumber: Int,
+        val isRecessWeek: Boolean,
+        val recessReason: String,
+        val isEvenWeek: Boolean,
+        val weekStateLabel: String
+    )
+
+    data class CalendarPrompt(
+        val id: String,
+        val question: String,
+        val pose: String,
+        val options: List<Pair<String, String>>
+    )
+
+    fun getAcademicCalendarStateAt(timeMs: Long): SemesterWeekState {
+        // Boundaries for 2026
+        val sem1Start = Calendar.getInstance().apply {
+            set(2026, Calendar.MARCH, 7, 0, 0, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val sem1End = Calendar.getInstance().apply {
+            set(2026, Calendar.JULY, 3, 23, 59, 59)
+            set(Calendar.MILLISECOND, 999)
+        }
+        val sem2Start = Calendar.getInstance().apply {
+            set(2026, Calendar.JULY, 25, 0, 0, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val sem2End = Calendar.getInstance().apply {
+            set(2026, Calendar.NOVEMBER, 20, 23, 59, 59)
+            set(Calendar.MILLISECOND, 999)
+        }
         
-        var academicWeeks = 0
-        var currentCheck = start
+        if (timeMs < sem1Start.timeInMillis) {
+            return SemesterWeekState(
+                semesterName = "Antes del Semestre I",
+                calendarWeekNumber = 1,
+                academicWeekNumber = 1,
+                isRecessWeek = false,
+                recessReason = "",
+                isEvenWeek = false,
+                weekStateLabel = "Clases"
+            )
+        }
+        
+        val isSem1 = timeMs <= sem1End.timeInMillis
+        val isIntersemestral = timeMs > sem1End.timeInMillis && timeMs < sem2Start.timeInMillis
+        val isSem2 = timeMs >= sem2Start.timeInMillis && timeMs <= sem2End.timeInMillis
+        val isChristmas = timeMs > sem2End.timeInMillis
+        
+        val semesterName = when {
+            isSem1 -> "I Semestre 2026"
+            isIntersemestral -> "Receso Intersemestral"
+            isSem2 -> "II Semestre 2026"
+            else -> "Vacaciones Navideñas"
+        }
+        
+        val baseStart = if (isSem2 || isChristmas) sem2Start else sem1Start
         val oneWeekMillis = 7L * 24L * 60L * 60L * 1000L
         
-        while (currentCheck <= now) {
-            val cal = Calendar.getInstance().apply { timeInMillis = currentCheck }
-            val year = cal.get(Calendar.YEAR)
+        val elapsedMillis = timeMs - baseStart.timeInMillis
+        val calendarWeekIndex = (elapsedMillis / oneWeekMillis).toInt().coerceAtLeast(0)
+        
+        var academicWeekCount = 0
+        var isCurrentWeekRecess = false
+        var currentRecessReason = ""
+        
+        val suspendedSet = _customSuspendedWeeks.value
+        
+        for (w in 0..calendarWeekIndex) {
+            var recess = false
+            var reason = ""
             
-            // Calculate Semana Santa for this year
-            val easter = getEasterDate(year)
-            val palmSunday = (easter.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -7) }
+            if (isSem1) {
+                if (w == 3) { // Semana Santa relative to Mar 07 (Week 4: Mar 28 - Apr 03)
+                    recess = true
+                    reason = "Semana Santa"
+                }
+            } else {
+                if (w == 7) { // Fiestas Patrias relative to Jul 25 (Week 8: Sep 12 - Sep 18)
+                    recess = true
+                    reason = "Fiestas Patrias"
+                }
+            }
             
-            val isSemanaSanta = currentCheck >= palmSunday.timeInMillis && currentCheck <= easter.timeInMillis
+            if (suspendedSet.contains(w)) {
+                recess = true
+                reason = "Clases Suspendidas"
+            }
             
-            // Fiestas Patrias week contains September 14
-            val sep14 = Calendar.getInstance().apply {
-                set(Calendar.YEAR, year)
-                set(Calendar.MONTH, Calendar.SEPTEMBER)
-                set(Calendar.DAY_OF_MONTH, 14)
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
+            if (w == calendarWeekIndex) {
+                isCurrentWeekRecess = recess
+                currentRecessReason = reason
             }
-            val fiestasPatriasStart = (sep14.clone() as Calendar).apply {
-                set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
-            }
-            val fiestasPatriasEnd = (fiestasPatriasStart.clone() as Calendar).apply {
-                add(Calendar.DAY_OF_YEAR, 7)
-            }
-            val isFiestasPatrias = currentCheck >= fiestasPatriasStart.timeInMillis && currentCheck <= fiestasPatriasEnd.timeInMillis
             
-            if (!isSemanaSanta && !isFiestasPatrias) {
-                academicWeeks++
+            if (!recess) {
+                academicWeekCount++
             }
-            currentCheck += oneWeekMillis
         }
         
-        academicWeeks.coerceAtLeast(1)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), -1)
-    
-    val semesterState = currentWeekOfSemester.map { week ->
-        when {
-            week < 0 -> "Vacaciones"
-            week in 1..14 -> "Clases"
-            week in 15..16 -> "Exámenes"
-            week == 17 -> "Recuperación"
-            else -> "Vacaciones"
+        val finalAcademicWeek = (academicWeekCount + _userCustomWeekOffset.value).coerceAtLeast(1)
+        
+        val weekStateLabel = when {
+            isIntersemestral -> "Vacaciones"
+            isChristmas -> "Vacaciones"
+            isCurrentWeekRecess -> "Receso"
+            else -> {
+                if (isSem1) {
+                    when (finalAcademicWeek) {
+                        in 1..7 -> "Clases"
+                        in 8..9 -> "Exámenes"
+                        in 10..14 -> "Clases"
+                        15 -> "Exámenes"
+                        16 -> "Recuperación"
+                        else -> "Vacaciones"
+                    }
+                } else {
+                    when (finalAcademicWeek) {
+                        in 1..6 -> "Clases"
+                        in 7..8 -> "Exámenes"
+                        in 9..14 -> "Clases"
+                        15 -> "Exámenes"
+                        16 -> "Recuperación"
+                        else -> "Vacaciones"
+                    }
+                }
+            }
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Vacaciones")
+        
+        var isEven = finalAcademicWeek % 2 == 0
+        val overrideW = _parityOverrideWeek.value
+        val overrideV = _parityOverrideVal.value
+        
+        if (overrideW != -1 && finalAcademicWeek >= overrideW) {
+            val diff = finalAcademicWeek - overrideW
+            val isDiffEven = diff % 2 == 0
+            val overrideIsEven = overrideV.equals("Par", ignoreCase = true)
+            isEven = if (isDiffEven) overrideIsEven else !overrideIsEven
+        }
+        
+        return SemesterWeekState(
+            semesterName = semesterName,
+            calendarWeekNumber = calendarWeekIndex + 1,
+            academicWeekNumber = finalAcademicWeek,
+            isRecessWeek = isCurrentWeekRecess,
+            recessReason = currentRecessReason,
+            isEvenWeek = isEven,
+            weekStateLabel = weekStateLabel
+        )
+    }
+
+    val academicCalendarState = combine(
+        _semesterStartDate,
+        _customSuspendedWeeks,
+        _parityOverrideWeek,
+        _parityOverrideVal,
+        _userCustomWeekOffset
+    ) { _, _, _, _, _ ->
+        getAcademicCalendarStateAt(System.currentTimeMillis())
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        SemesterWeekState(
+            semesterName = "I Semestre 2026",
+            calendarWeekNumber = 1,
+            academicWeekNumber = 1,
+            isRecessWeek = false,
+            recessReason = "",
+            isEvenWeek = false,
+            weekStateLabel = "Clases"
+        )
+    )
+
+    val currentWeekOfSemester = academicCalendarState.map { state ->
+        state.academicWeekNumber
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1)
+
+    val semesterState = academicCalendarState.map { state ->
+        state.weekStateLabel
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Clases")
+
+    val isEvenWeek = academicCalendarState.map { state ->
+        state.isEvenWeek
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun toggleParity() {
+        viewModelScope.launch {
+            val currentState = academicCalendarState.value
+            val currentW = currentState.academicWeekNumber
+            val currentIsEven = currentState.isEvenWeek
+            val newVal = if (currentIsEven) "Impar" else "Par"
+            
+            _parityOverrideWeek.value = currentW
+            _parityOverrideVal.value = newVal
+            
+            repository.saveSetting("parity_override_week", currentW.toString())
+            repository.saveSetting("parity_override_val", newVal)
+        }
+    }
+
+    fun forceParity(valStr: String) {
+        viewModelScope.launch {
+            val currentW = academicCalendarState.value.academicWeekNumber
+            _parityOverrideWeek.value = currentW
+            _parityOverrideVal.value = valStr
+            
+            repository.saveSetting("parity_override_week", currentW.toString())
+            repository.saveSetting("parity_override_val", valStr)
+        }
+    }
+
+    fun adjustWeekNumber(targetWeek: Int) {
+        viewModelScope.launch {
+            val tempOffset = _userCustomWeekOffset.value
+            _userCustomWeekOffset.value = 0
+            val baseState = getAcademicCalendarStateAt(System.currentTimeMillis())
+            val baseWeek = baseState.academicWeekNumber
+            
+            val newOffset = targetWeek - baseWeek
+            _userCustomWeekOffset.value = newOffset
+            
+            repository.saveSetting("user_custom_week_offset", newOffset.toString())
+        }
+    }
+
+    fun setWeekSuspended(relativeWeekIndex: Int, suspended: Boolean) {
+        viewModelScope.launch {
+            val current = _customSuspendedWeeks.value.toMutableSet()
+            if (suspended) {
+                current.add(relativeWeekIndex)
+            } else {
+                current.remove(relativeWeekIndex)
+            }
+            _customSuspendedWeeks.value = current
+            repository.saveSetting("custom_suspended_weeks", current.joinToString(","))
+        }
+    }
+
+    fun toggleCurrentWeekSuspended() {
+        val currentState = academicCalendarState.value
+        val relativeIndex = currentState.calendarWeekNumber - 1
+        val isSuspended = _customSuspendedWeeks.value.contains(relativeIndex)
+        setWeekSuspended(relativeIndex, !isSuspended)
+    }
+
+    fun dismissPrompt() {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            _lastCalendarQueryTime.value = now
+            repository.saveSetting("last_calendar_query_time", now.toString())
+        }
+    }
+
+    val activeCalendarPrompt = combine(
+        academicCalendarState,
+        _lastCalendarQueryTime
+    ) { state, lastQueryTime ->
+        val now = System.currentTimeMillis()
+        val daysSinceLastQuery = (now - lastQueryTime) / (24 * 60 * 60 * 1000L)
+        
+        // Show prompt if daysSinceLastQuery >= 14 (every 2 weeks)
+        // OR if critical milestone (Academic Week 1, Week 8, Week 13, Week 15) and daysSinceLastQuery >= 7
+        // Also if lastQueryTime is 0, we show it (first time ever)
+        val isCriticalMilestone = state.academicWeekNumber in listOf(1, 8, 13, 15)
+        val shouldShow = lastQueryTime == 0L || daysSinceLastQuery >= 14 || (isCriticalMilestone && daysSinceLastQuery >= 7)
+        
+        if (shouldShow) {
+            when {
+                state.semesterName == "Receso Intersemestral" || state.semesterName == "Vacaciones Navideñas" -> {
+                    CalendarPrompt(
+                        id = "vacation_confirm",
+                        question = "¡Hola de nuevo! Mis sensores dicen que estamos en vacaciones universitarias. ¿Es correcto o ya inició tu semestre?",
+                        pose = "sleeping",
+                        options = listOf("Sí, de vacaciones" to "confirm", "Ya inició semestre" to "start_semester")
+                    )
+                }
+                state.isRecessWeek -> {
+                    CalendarPrompt(
+                        id = "recess_confirm",
+                        question = "¡Hola! Estamos en receso por '${state.recessReason}'. ¿Estás descansando bien o se reanudaron las clases?",
+                        pose = "idle",
+                        options = listOf("Sí, en receso" to "confirm", "Hubo clases normales" to "unsuspend")
+                    )
+                }
+                state.academicWeekNumber == 13 -> {
+                    CalendarPrompt(
+                        id = "week_13_cheer",
+                        question = "¡Semana 13! ¡Ya casi acabamos esto! ¿Llevas al día tus materias par/impar?",
+                        pose = "celebrating",
+                        options = listOf("¡Sí, al día!" to "confirm", "Ajustar par/impar" to "toggle_parity")
+                    )
+                }
+                state.weekStateLabel.startsWith("Exámenes") -> {
+                    CalendarPrompt(
+                        id = "exams_confirm",
+                        question = "¡Hola! ¿Ya empezó tu semana de exámenes o se retrasaron las fechas?",
+                        pose = "exam",
+                        options = listOf("Sí, en exámenes" to "confirm", "Se retrasaron" to "suspend_week")
+                    )
+                }
+                else -> {
+                    CalendarPrompt(
+                        id = "parity_confirm",
+                        question = "Hola volví. ¿Estamos en semana ${if(state.isEvenWeek) "PAR" else "IMPAR"}? Ajustemos todo hacia adelante.",
+                        pose = "greeting",
+                        options = listOf(
+                            "Es ${if(state.isEvenWeek) "PAR" else "IMPAR"} (Correcto)" to "confirm",
+                            "Cambiar a ${if(state.isEvenWeek) "IMPAR" else "PAR"}" to "toggle_parity",
+                            "Esta semana no hubo clases" to "suspend_week"
+                        )
+                    )
+                }
+            }
+        } else {
+            null
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     fun startNewSemester() {
         viewModelScope.launch {
-            // Delete old subjects, assessments, logs
             val currentSubjects = repository.subjects.first()
+            val allAssessments = repository.assessments.first()
+            
+            // Block A: Capture date range
+            val startDate = _semesterStartDate.value ?: System.currentTimeMillis()
+            val endDate = System.currentTimeMillis()
+            
+            // Block B: Gather data
+            val sdf = java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault())
+            // Note: date formats in our app are typically "dd MMM" or "dd MMM yyyy"
+            
+            val allLogs = repository.attendanceLogs.first() // We'll just take all logs as approximation if they don't have year, but better to check if they belong to active subjects.
+            val activeSubjectIds = currentSubjects.map { it.id }
+            val logs = allLogs.filter { activeSubjectIds.contains(it.subjectId) }
+            
+            val totalLogs = logs.size
+            val presentLogs = logs.count { it.isPresent }
+            val attendancePercentage = if (totalLogs > 0) (presentLogs.toDouble() / totalLogs) * 100 else 100.0
+            
+            val subjectAbsences = logs.filter { !it.isPresent }.groupBy { it.subjectId }.mapValues { it.value.size }
+            val mostAbsencesSubjectId = subjectAbsences.maxByOrNull { it.value }?.key
+            val mostAbsencesSubjectName = currentSubjects.find { it.id == mostAbsencesSubjectId }?.name
+            
+            // Focus sessions
+            val focusSessions = _focusSessionsHistoryJson.value.parseSessionsHistory() // We need to parse json
+            // Try to filter focus sessions loosely
+            // For now, we'll just take all that we haven't cleared.
+            val focusHoursTotal = focusSessions.sumOf { it.duration } / 60.0
+            val focusSessionsCompleted = focusSessions.count { !it.interrupted }
+            val focusSessionsInterrupted = focusSessions.count { it.interrupted }
+            
+            val timeOfDayGroups = focusSessions.filter { !it.interrupted }.groupBy { it.timeOfDay }
+            val mostProductiveTimeOfDay = timeOfDayGroups.maxByOrNull { it.value.sumOf { s -> s.duration } }?.key
+            
+            val subjectFocusGroups = focusSessions.groupBy { it.label }
+            val mostFocusedSubject = subjectFocusGroups.maxByOrNull { it.value.sumOf { s -> s.duration } }?.key
+            
+            val badges = repository.badges.first()
+            val badgesUnlockedCount = badges.count { it.isUnlocked } // Maybe count only ones unlocked during this time, but we don't have clear timestamps for all.
+            
+            val maxStreak = repository.getSetting("max_streak")?.toIntOrNull() ?: 0
+            val averageStreak = maxStreak / 2.0 // Approximation
+            
+            val trips = repository.tripRecords.first()
+            val totalTripDistance = trips.sumOf { it.durationMinutes.toDouble() } // We don't have distance, using duration as proxy
+            
+            // Tasks completed
+            val allTasks = repository.tasks.first()
+            val completedTasksCount = allTasks.count { it.isCompleted && activeSubjectIds.contains(it.subjectId) }
+            
+            var bestSubjectName: String? = null
+            var worstSubjectName: String? = null
+            var bestGrade = -1.0
+            var worstGrade = 101.0
+            
+            // Archive current subjects into AcademicRecord
+            if (currentSubjects.isNotEmpty()) {
+                val careerId = repository.getOrCreateCareer(
+                    universityName = _userUniversity.value.takeIf { it.isNotBlank() } ?: "UNI",
+                    campusName = "Campus Central",
+                    careerName = _career.value.takeIf { it.isNotBlank() } ?: "Carrera"
+                )
+                
+                val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString()
+                
+                for (sub in currentSubjects) {
+                    val subAssessments = allAssessments.filter { it.subjectId == sub.id }
+                    val finalGrade = if (subAssessments.isNotEmpty()) {
+                        val grade = subAssessments.filter { it.grade != null }.sumOf { (it.grade!! / 100.0) * it.percentage }
+                        if (grade > bestGrade) { bestGrade = grade; bestSubjectName = sub.name }
+                        if (grade < worstGrade) { worstGrade = grade; worstSubjectName = sub.name }
+                        grade
+                                            } else {
+                        0.0
+                    }
+                    
+                    // Match with PensumSubject or create one
+                    val pensumSubjects = repository.getPensumForCareer(careerId).first()
+                    var matchedPensum = pensumSubjects.find { it.name.equals(sub.name, ignoreCase = true) || it.code.equals(sub.name, ignoreCase = true) }
+                    
+                    val pensumSubjectId = matchedPensum?.id ?: repository.insertPensumSubject(
+                        com.aistudio.unibuddy.qywvsp.data.PensumSubject(
+                            careerId = careerId,
+                            code = sub.name.take(5).uppercase(),
+                            name = sub.name,
+                            semester = "Extracurricular",
+                            credits = 3.0,
+                            isNumbers = false
+                        )
+                    ).toInt()
+
+                    val status = if (subAssessments.isEmpty()) com.aistudio.unibuddy.qywvsp.data.AssessmentStatus.UNKNOWN
+                                 else if (finalGrade >= 60.0) com.aistudio.unibuddy.qywvsp.data.AssessmentStatus.NF_R
+                                 else com.aistudio.unibuddy.qywvsp.data.AssessmentStatus.NF_R // NF_R means Regular, grade determines pass/fail
+                                 
+                    repository.insertAcademicRecord(
+                        com.aistudio.unibuddy.qywvsp.data.AcademicRecord(
+                            pensumSubjectId = pensumSubjectId,
+                            grade = finalGrade,
+                            status = status,
+                            year = currentYear,
+                            academicGroup = "A",
+                            professorId = null,
+                            rating = null
+                        )
+                    )
+                }
+            }
+
+            // Generate Recap highlight
+            val highlightText = if (attendancePercentage > 80.0 && focusHoursTotal > 10.0) {
+                "¡Increíble dedicación! Tuviste gran asistencia y mucho tiempo de enfoque."
+            } else if (attendancePercentage > 90.0) {
+                "¡Asistencia casi perfecta! Eres muy constante."
+            } else if (focusHoursTotal > 20.0) {
+                "¡Máquina de concentrarte! Tu enfoque fue tu punto más fuerte."
+            } else {
+                "¡Semestre completado! Sigue esforzándote para mejorar."
+            }
+            
+            // Calculate best mood (Approximation based on attendance)
+            // Just some placeholder logic since we don't have exact historical daily mood for the whole semester easily
+            val bestMoodDaysCount = presentLogs
+            val worriedMoodDaysCount = totalLogs - presentLogs
+            val bestDayOfWeek = "Miércoles" // Placeholder
+
+            val recap = com.aistudio.unibuddy.qywvsp.data.SeasonRecap(
+                startDate = startDate,
+                endDate = endDate,
+                attendancePercentage = attendancePercentage,
+                focusHoursTotal = focusHoursTotal,
+                focusSessionsCompleted = focusSessionsCompleted,
+                focusSessionsInterrupted = focusSessionsInterrupted,
+                bestMoodDaysCount = bestMoodDaysCount,
+                worriedMoodDaysCount = worriedMoodDaysCount,
+                maxStreak = maxStreak,
+                badgesUnlockedCount = badgesUnlockedCount,
+                bestSubjectName = bestSubjectName,
+                worstSubjectName = worstSubjectName,
+                highlightText = highlightText,
+                subjectWithMostAbsences = mostAbsencesSubjectName,
+                mostProductiveTimeOfDay = mostProductiveTimeOfDay,
+                mostFocusedSubject = mostFocusedSubject,
+                bestDayOfWeek = bestDayOfWeek,
+                totalTripDistance = totalTripDistance,
+                completedTasksCount = completedTasksCount,
+                averageStreak = averageStreak
+            )
+            
+            val recapId = repository.insertSeasonRecap(recap)
+            
+            // Trigger UI
+            _showSeasonRecap.value = recap
+
+            // Clear focus sessions so they don't roll over
+            _focusSessionsHistoryJson.value = "[]"
+            repository.saveSetting("focus_sessions_history", "[]")
+
+            // Delete old subjects (Assessments, Tasks, Absences cascade. AttendanceLogs are safe)
             for (sub in currentSubjects) {
                 repository.deleteSubject(sub)
             }
+            
             // Start a new semester by resetting start date and asking for subjects (onboarding)
             val now = System.currentTimeMillis()
             _semesterStartDate.value = now
@@ -621,7 +1126,17 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         initialValue = emptyList()
     )
 
-    private val _weeklyStreak = MutableStateFlow(12)
+    private fun setWeeklyStreak(newValue: Int) {
+        viewModelScope.launch {
+            _weeklyStreak.value = newValue.coerceAtLeast(0)
+            repository.saveSetting("weekly_streak_count", _weeklyStreak.value.toString())
+            
+            if (_weeklyStreak.value >= 5) {
+                unlockBadge("Estudiante Responsable")
+            }
+        }
+    }
+    private val _weeklyStreak = MutableStateFlow(0)
     val weeklyStreak: StateFlow<Int> = _weeklyStreak.asStateFlow()
 
     private val _username = MutableStateFlow("Estudiante")
@@ -639,7 +1154,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     private val _buddyAccessory = MutableStateFlow("none") // "none", "hat", "glasses", "scarf"
     val buddyAccessory: StateFlow<String> = _buddyAccessory.asStateFlow()
 
-    private val _buddyColor = MutableStateFlow("#4CAF50") // Default Green
+    private val _buddyColor = MutableStateFlow("#0F172A") // Default Navy Blue
     val buddyColor: StateFlow<String> = _buddyColor.asStateFlow()
 
     private val _career = MutableStateFlow("Ingeniería Industrial")
@@ -1175,13 +1690,25 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                         isNumbers = false
                     )
                 )
+                var profId: Int? = null
+                if (parsed.professorName.isNotBlank()) {
+                    profId = repository.insertProfessor(
+                        com.aistudio.unibuddy.qywvsp.data.Professor(
+                            name = parsed.professorName.trim(),
+                            avatarSeed = parsed.professorName.trim().take(2).uppercase()
+                        )
+                    ).toInt()
+                }
+
                 repository.insertAcademicRecord(
                     AcademicRecord(
                         pensumSubjectId = subjectId.toInt(),
                         grade = parsed.grade,
                         status = parsed.status,
                         year = academicTerm,
-                        academicGroup = parsed.group
+                        academicGroup = parsed.group,
+                        professorId = profId,
+                        rating = null
                     )
                 )
             }
@@ -1236,7 +1763,13 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
         _isRaining.value = !_isRaining.value
     }
 
-    fun addSubject(name: String, schedule: String, sessions: List<com.aistudio.unibuddy.qywvsp.data.ClassSessionDetails>, requiredAttendancePercent: Int, totalClasses: Int, colorHex: String = "#FFB3E5FC") {
+    fun addDummyProfessor() {
+        viewModelScope.launch {
+            repository.insertProfessor(com.aistudio.unibuddy.qywvsp.data.Professor(name = "Nuevo Profesor", avatarSeed = "NP"))
+        }
+    }
+
+    fun addSubject(name: String, schedule: String, sessions: List<com.aistudio.unibuddy.qywvsp.data.ClassSessionDetails>, requiredAttendancePercent: Int, totalClasses: Int, colorHex: String = "#FF4CAF50") {
         viewModelScope.launch {
             val subject = Subject(
                 name = name,
@@ -1293,7 +1826,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             val date = dateStr ?: SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date())
             repository.insertAbsence(Absence(subjectId = subjectId, date = date))
             // Increment streak or update list
-            _weeklyStreak.value = _weeklyStreak.value + 1
+            setWeeklyStreak(_weeklyStreak.value + 1)
                 notifyWidgets()
 }
     }
@@ -1303,7 +1836,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             repository.deleteAbsenceById(absenceId)
             notifyWidgets()
             if (_weeklyStreak.value > 0) {
-                _weeklyStreak.value = _weeklyStreak.value - 1
+                setWeeklyStreak(_weeklyStreak.value - 1)
             }
                 notifyWidgets()
 }
@@ -1346,12 +1879,18 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
 }
     }
 
+    private val _buddyCelebrationEvent = kotlinx.coroutines.flow.MutableSharedFlow<Unit>()
+    val buddyCelebrationEvent: kotlinx.coroutines.flow.SharedFlow<Unit> = _buddyCelebrationEvent.asSharedFlow()
+
     fun toggleTask(task: Task) {
         viewModelScope.launch {
-            repository.updateTask(task.copy(isCompleted = !task.isCompleted))
+            val newIsCompleted = !task.isCompleted
+            repository.updateTask(task.copy(isCompleted = newIsCompleted))
+            if (newIsCompleted) {
+                _buddyCelebrationEvent.emit(Unit)
+            }
             notifyWidgets()
-                notifyWidgets()
-}
+        }
     }
 
     fun deleteTask(taskId: Int) {
@@ -1430,12 +1969,15 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             lastInsertedLogId = insertedId
             
             _snackbarEvent.emit("Asistencia registrada")
+            if (isPresent) {
+                _buddyCelebrationEvent.emit(Unit)
+            }
 
             // For backwards compatibility with standard dashboard cards:
             if (!isPresent) {
                 repository.insertAbsence(Absence(subjectId = subjectId, date = date))
             } else {
-                _weeklyStreak.value = _weeklyStreak.value + 1
+                setWeeklyStreak(_weeklyStreak.value + 1)
             }
 
             // Fire real high-priority Android notifications
@@ -1479,7 +2021,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                             repository.deleteAbsenceById(absence.id)
                         }
                     } else {
-                        _weeklyStreak.value = (_weeklyStreak.value - 1).coerceAtLeast(0)
+                        setWeeklyStreak(_weeklyStreak.value - 1)
                     }
                 }
             }
@@ -1502,7 +2044,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                     }
                 } else {
                     if (_weeklyStreak.value > 0) {
-                        _weeklyStreak.value = _weeklyStreak.value - 1
+                        setWeeklyStreak(_weeklyStreak.value - 1)
                     }
                 }
             }
@@ -1525,7 +2067,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             saveBaseTravelTime(25)
             saveGoogleMapsApiKey("")
             _isRaining.value = false
-            _weeklyStreak.value = 0
+            setWeeklyStreak(0)
             _passedSubjects.value = emptySet()
             repository.saveSetting("passed_subjects", "")
             _semesterStartDate.value = null
@@ -1624,7 +2166,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                     saveUsername(s.optString("username", "Estudiante"))
                     saveRoute(s.optString("origin", "Casa"), s.optString("destination", "Facultad"))
                     saveHomeWorkAddresses(s.optString("home_address", ""), s.optString("work_address", ""))
-                    saveBuddyCustomization(s.optString("buddy_accessory", "none"), s.optString("buddy_color", "#4CAF50"))
+                    saveBuddyCustomization(s.optString("buddy_accessory", "none"), s.optString("buddy_color", "#0F172A"))
                     saveBaseTravelTime(s.optInt("base_travel_time", 25))
                     setArrivalMarginPreference(s.optString("arrival_margin_preference", "normal"))
                 }
@@ -1648,7 +2190,7 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
                             sessions = com.aistudio.unibuddy.qywvsp.data.Converters().fromString(subObj.optString("sessionsJson", "[]")),
                             requiredAttendancePercent = subObj.getInt("requiredAttendancePercent"),
                             totalClasses = subObj.getInt("totalClasses"),
-                            colorHex = subObj.optString("colorHex", "#FFB3E5FC")
+                            colorHex = subObj.optString("colorHex", "#FF4CAF50")
                         )
                         val newSubId = repository.insertSubject(sub).toInt()
 
@@ -1710,16 +2252,67 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             } catch (e: Exception) {
                 e.printStackTrace()
                 onError(e.message ?: "Error desconocido")
+                        }
+        }
+    }
+    fun checkpointDatabase() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                repository.db.query(androidx.sqlite.db.SimpleSQLiteQuery("PRAGMA wal_checkpoint(FULL)"))
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+    
+    suspend fun exportDatabaseToUri(context: android.content.Context, uri: android.net.Uri): Boolean {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                repository.db.query(androidx.sqlite.db.SimpleSQLiteQuery("PRAGMA wal_checkpoint(FULL)"))
+                val dbFile = context.getDatabasePath("unibuddy_database")
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    dbFile.inputStream().use { input ->
+                        input.copyTo(output)
+                    }
+                }
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
+        }
+    }
+
+    suspend fun importDatabaseFromUri(context: android.content.Context, uri: android.net.Uri): Boolean {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val dbFile = context.getDatabasePath("unibuddy_database")
+                val walFile = context.getDatabasePath("unibuddy_database-wal")
+                val shmFile = context.getDatabasePath("unibuddy_database-shm")
+                
+                // Close the DB to allow replacement
+                repository.db.close()
+                
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    dbFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                
+                // Delete wal and shm since we replaced the main db file
+                if (walFile.exists()) walFile.delete()
+                if (shmFile.exists()) shmFile.delete()
+                
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
             }
         }
     }
 }
-
-
-    
-
-class UniBuddyViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+class UniBuddyViewModelFactory(private val application: android.app.Application) : androidx.lifecycle.ViewModelProvider.Factory {
+    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(UniBuddyViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
             return UniBuddyViewModel(application) as T
@@ -1727,3 +2320,5 @@ class UniBuddyViewModelFactory(private val application: Application) : ViewModel
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
+
+

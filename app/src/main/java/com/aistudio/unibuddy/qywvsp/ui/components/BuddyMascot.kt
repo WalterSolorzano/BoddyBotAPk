@@ -18,7 +18,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
-import com.aistudio.unibuddy.qywvsp.ui.theme.DarkGreen
+import com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue
 
 @Composable
 fun BuddyMascot(
@@ -27,7 +27,8 @@ fun BuddyMascot(
     isHappy: Boolean = true,
     pose: String = "idle", // "idle", "greeting", "working", "sleeping", "celebrating", "exam"
     accessory: String = "none", // "none", "hat", "glasses", "scarf", "sunglasses"
-    mainColor: Color = DarkGreen
+    weatherState: String = "clear", // "clear", "rainy", "sunny", "night"
+    mainColor: Color = NavyBlue
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "buddy_bob")
     val duration = when (pose) {
@@ -268,6 +269,42 @@ fun BuddyMascot(
                 drawLine(color = Color.White.copy(alpha = 0.85f), start = Offset(w * 0.40f, h * 0.82f), end = Offset(w * 0.47f, h * 0.84f), strokeWidth = 2f)
                 drawLine(color = Color.White.copy(alpha = 0.85f), start = Offset(w * 0.53f, h * 0.80f), end = Offset(w * 0.60f, h * 0.78f), strokeWidth = 2f)
                 drawLine(color = Color.White.copy(alpha = 0.85f), start = Offset(w * 0.53f, h * 0.84f), end = Offset(w * 0.60f, h * 0.82f), strokeWidth = 2f)
+            }
+
+            // Weather skin/traje
+            if (weatherState == "rainy") {
+                // Draw a cute yellow raincoat (poncho style to not cover too much)
+                val raincoatPath = Path().apply {
+                    moveTo(w * 0.25f, h * 0.58f) // left shoulder
+                    quadraticTo(w * 0.15f, h * 0.75f, w * 0.18f, h * 0.85f)
+                    lineTo(w * 0.82f, h * 0.85f) // bottom hem
+                    quadraticTo(w * 0.85f, h * 0.75f, w * 0.75f, h * 0.58f) // right shoulder
+                    quadraticTo(w * 0.50f, h * 0.68f, w * 0.25f, h * 0.58f) // collar
+                    close()
+                }
+                drawPath(path = raincoatPath, color = Color(0xFFFFD54F)) // Yellow
+                drawPath(path = raincoatPath, color = mainColor, style = Stroke(width = 3f))
+                
+                // Raincoat buttons
+                drawCircle(color = mainColor, radius = w * 0.02f, center = Offset(w * 0.5f, h * 0.68f))
+                drawCircle(color = mainColor, radius = w * 0.02f, center = Offset(w * 0.5f, h * 0.76f))
+            } else if (weatherState == "night") {
+                // Cute sleeping cap or moon symbol on chest? Let's keep it simple.
+                // Just a tiny star on the chest.
+                val starPath = Path().apply {
+                    moveTo(w * 0.5f, h * 0.68f)
+                    lineTo(w * 0.52f, h * 0.72f)
+                    lineTo(w * 0.57f, h * 0.72f)
+                    lineTo(w * 0.53f, h * 0.75f)
+                    lineTo(w * 0.55f, h * 0.80f)
+                    lineTo(w * 0.5f, h * 0.77f)
+                    lineTo(w * 0.45f, h * 0.80f)
+                    lineTo(w * 0.47f, h * 0.75f)
+                    lineTo(w * 0.43f, h * 0.72f)
+                    lineTo(w * 0.48f, h * 0.72f)
+                    close()
+                }
+                drawPath(path = starPath, color = Color(0xFFF9C74F))
             }
         }
     }

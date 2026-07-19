@@ -78,7 +78,7 @@ data class Subject(
     val sessions: List<ClassSessionDetails> = emptyList(),
     val requiredAttendancePercent: Int,
     val totalClasses: Int,
-    val colorHex: String = "#FFB3E5FC"
+    val colorHex: String = "#FF4CAF50"
 )
 
 @Entity(
@@ -152,10 +152,20 @@ data class PensumSubject(
     val isNumbers: Boolean = false
 )
 
+@Entity(tableName = "professors")
+data class Professor(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val avatarSeed: String
+)
+
 @Entity(
     tableName = "academic_records",
-    foreignKeys = [ForeignKey(entity = PensumSubject::class, parentColumns = ["id"], childColumns = ["pensumSubjectId"], onDelete = ForeignKey.CASCADE)],
-    indices = [Index("pensumSubjectId")]
+    foreignKeys = [
+        ForeignKey(entity = PensumSubject::class, parentColumns = ["id"], childColumns = ["pensumSubjectId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = Professor::class, parentColumns = ["id"], childColumns = ["professorId"], onDelete = ForeignKey.SET_NULL)
+    ],
+    indices = [Index("pensumSubjectId"), Index("professorId")]
 )
 data class AcademicRecord(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -163,7 +173,9 @@ data class AcademicRecord(
     val grade: Double,
     val status: AssessmentStatus,
     val year: String,
-    val academicGroup: String
+    val academicGroup: String,
+    @ColumnInfo(name = "professorId") val professorId: Int? = null,
+    @ColumnInfo(name = "rating") val rating: Int? = null
 )
 
 data class AcademicRecordWithSubject(
@@ -201,14 +213,6 @@ data class Badge(
 
 @Entity(
     tableName = "attendance_logs",
-    foreignKeys = [
-        ForeignKey(
-            entity = Subject::class,
-            parentColumns = ["id"],
-            childColumns = ["subjectId"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
     indices = [Index("subjectId")]
 )
 data class AttendanceLog(
@@ -217,6 +221,40 @@ data class AttendanceLog(
     val date: String, // e.g., "12 Oct"
     val isPresent: Boolean // true = Presente, false = Ausente/Falta
 )
+
+@Entity(tableName = "season_recaps")
+data class SeasonRecap(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val startDate: Long,
+    val endDate: Long,
+    val attendancePercentage: Double,
+    val focusHoursTotal: Double,
+    val focusSessionsCompleted: Int,
+    val focusSessionsInterrupted: Int,
+    val bestMoodDaysCount: Int,
+    val worriedMoodDaysCount: Int,
+    val maxStreak: Int,
+    val badgesUnlockedCount: Int,
+    val bestSubjectName: String?,
+    val worstSubjectName: String?,
+    val highlightText: String,
+    val subjectWithMostAbsences: String?,
+    val mostProductiveTimeOfDay: String?,
+    val mostFocusedSubject: String?,
+    val bestDayOfWeek: String?,
+    val totalTripDistance: Double,
+    val completedTasksCount: Int,
+    val averageStreak: Double
+)
+
+@Dao
+interface SeasonRecapDao {
+    @Query("SELECT * FROM season_recaps ORDER BY endDate DESC")
+    fun getAllRecaps(): kotlinx.coroutines.flow.Flow<List<SeasonRecap>>
+
+    @Insert
+    suspend fun insertRecap(recap: SeasonRecap): Long
+}
 
 @Entity(
     tableName = "tasks",
@@ -452,17 +490,20 @@ class Converters {
         KeyValueSetting::class,
         AttendanceLog::class,
         Badge::class,
+        Professor::class,
         Career::class,
         PensumSubject::class,
         AcademicRecord::class,
-        Task::class
+        Task::class,
+        SeasonRecap::class
     ],
-    version = 12,
+    version = 15,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun careerDao(): CareerDao
+    abstract fun professorDao(): ProfessorDao
     abstract fun pensumSubjectDao(): PensumSubjectDao
     abstract fun academicRecordDao(): AcademicRecordDao
     abstract fun subjectDao(): SubjectDao
@@ -473,10 +514,20 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun attendanceLogDao(): AttendanceLogDao
     abstract fun badgeDao(): BadgeDao
     abstract fun taskDao(): TaskDao
+    abstract fun seasonRecapDao(): SeasonRecapDao
 
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
+
+        val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `professors` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `avatarSeed` TEXT NOT NULL)")
+                db.execSQL("ALTER TABLE `academic_records` ADD COLUMN `professorId` INTEGER")
+                db.execSQL("ALTER TABLE `academic_records` ADD COLUMN `rating` INTEGER")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_academic_records_professorId` ON `academic_records` (`professorId`)")
+            }
+        }
 
         val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -556,6 +607,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+                val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `attendance_logs_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `subjectId` INTEGER NOT NULL, `isPresent` INTEGER NOT NULL, `date` TEXT NOT NULL)")
+                db.execSQL("INSERT INTO `attendance_logs_new` (`id`, `subjectId`, `isPresent`, `date`) SELECT `id`, `subjectId`, `isPresent`, `date` FROM `attendance_logs`")
+                db.execSQL("DROP TABLE `attendance_logs`")
+                db.execSQL("ALTER TABLE `attendance_logs_new` RENAME TO `attendance_logs`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_attendance_logs_subjectId` ON `attendance_logs` (`subjectId`)")
+            }
+        }
+
+                val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `season_recaps` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startDate` INTEGER NOT NULL, `endDate` INTEGER NOT NULL, `attendancePercentage` REAL NOT NULL, `focusHoursTotal` REAL NOT NULL, `focusSessionsCompleted` INTEGER NOT NULL, `focusSessionsInterrupted` INTEGER NOT NULL, `bestMoodDaysCount` INTEGER NOT NULL, `worriedMoodDaysCount` INTEGER NOT NULL, `maxStreak` INTEGER NOT NULL, `badgesUnlockedCount` INTEGER NOT NULL, `bestSubjectName` TEXT, `worstSubjectName` TEXT, `highlightText` TEXT NOT NULL, `subjectWithMostAbsences` TEXT, `mostProductiveTimeOfDay` TEXT, `mostFocusedSubject` TEXT, `bestDayOfWeek` TEXT, `totalTripDistance` REAL NOT NULL, `completedTasksCount` INTEGER NOT NULL, `averageStreak` REAL NOT NULL)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -563,7 +630,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "unibuddy_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
@@ -574,7 +641,7 @@ abstract class AppDatabase : RoomDatabase() {
 }
 
 // Repository Pattern
-class UniBuddyRepository(private val db: AppDatabase) {
+class UniBuddyRepository(val db: AppDatabase) {
     val subjects: Flow<List<Subject>> = db.subjectDao().getAllSubjects()
     val absences: Flow<List<Absence>> = db.absenceDao().getAllAbsences()
     val tripRecords: Flow<List<TripRecord>> = db.tripRecordDao().getAllTrips()
@@ -582,9 +649,11 @@ class UniBuddyRepository(private val db: AppDatabase) {
     val assessments: Flow<List<Assessment>> = db.assessmentDao().getAllAssessments()
     val badges: Flow<List<Badge>> = db.badgeDao().getAllBadges()
     val tasks: Flow<List<Task>> = db.taskDao().getAllTasks()
+    val seasonRecaps: Flow<List<SeasonRecap>> = db.seasonRecapDao().getAllRecaps()
 
     fun getTasksForSubject(subjectId: Int): Flow<List<Task>> = db.taskDao().getTasksForSubject(subjectId)
     suspend fun insertTask(task: Task): Long = db.taskDao().insertTask(task)
+    suspend fun insertSeasonRecap(recap: SeasonRecap): Long = db.seasonRecapDao().insertRecap(recap)
     suspend fun updateTask(task: Task) = db.taskDao().updateTask(task)
     suspend fun deleteTaskById(id: Int) = db.taskDao().deleteTaskById(id)
 
@@ -629,8 +698,23 @@ class UniBuddyRepository(private val db: AppDatabase) {
         return db.careerDao().insertCareer(Career(universityName = universityName, campusName = campusName, careerName = careerName)).toInt()
     }
 
+    fun getPensumForCareer(careerId: Int): kotlinx.coroutines.flow.Flow<List<PensumSubject>> = db.pensumSubjectDao().getSubjectsForCareer(careerId)
     suspend fun insertPensumSubject(subject: PensumSubject): Long = db.pensumSubjectDao().insertPensumSubject(subject)
     suspend fun insertAcademicRecord(record: AcademicRecord): Long = db.academicRecordDao().insertAcademicRecord(record)
+    suspend fun insertProfessor(professor: Professor): Long = db.professorDao().insertProfessor(professor)
+    fun getAllProfessors(): kotlinx.coroutines.flow.Flow<List<Professor>> = db.professorDao().getAllProfessors()
     
     val fullAcademicHistory = db.academicRecordDao().getFullAcademicHistory()
+}
+
+@Dao
+interface ProfessorDao {
+    @Query("SELECT * FROM professors")
+    fun getAllProfessors(): Flow<List<Professor>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProfessor(professor: Professor): Long
+
+    @Query("SELECT * FROM professors WHERE id = :id")
+    suspend fun getProfessorById(id: Int): Professor?
 }

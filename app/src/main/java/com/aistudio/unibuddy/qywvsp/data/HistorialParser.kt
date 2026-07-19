@@ -10,7 +10,10 @@ class HistorialParser {
         val status: AssessmentStatus,
         val group: String,
         val semester: String,
-        val year: String
+        val year: String,
+        var matchedCode: String? = null,
+        var matchedName: String? = null,
+        var professorName: String = ""
     )
 
     fun parsePdfText(rawText: String): List<ParsedSubject> {
