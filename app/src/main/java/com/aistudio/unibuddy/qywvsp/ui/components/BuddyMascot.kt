@@ -163,6 +163,52 @@ fun BuddyMascot(
                 }
                 drawPath(path = visorPath, color = capColor)
                 drawPath(path = visorPath, color = mainColor, style = Stroke(width = 3.0f))
+            } else if (accessory == "sombrero_nica") {
+                // Sombrero de pita tradicional nicaragüense con cinta azul y blanco
+                val strawColor = Color(0xFFE3D2B4)
+                val ribbonBlue = Color(0xFF2196F3)
+                
+                // Copa del Sombrero (Crown)
+                val crownPath = Path().apply {
+                    moveTo(w * 0.28f, h * 0.35f)
+                    cubicTo(
+                        w * 0.30f, h * 0.13f,
+                        w * 0.70f, h * 0.13f,
+                        w * 0.72f, h * 0.35f
+                    )
+                    close()
+                }
+                drawPath(path = crownPath, color = strawColor)
+                drawPath(path = crownPath, color = mainColor, style = Stroke(width = 4.0f))
+
+                // Cinta del Sombrero (Azul y Blanco)
+                val ribbonPath = Path().apply {
+                    moveTo(w * 0.27f, h * 0.32f)
+                    lineTo(w * 0.73f, h * 0.32f)
+                    lineTo(w * 0.71f, h * 0.36f)
+                    lineTo(w * 0.29f, h * 0.36f)
+                    close()
+                }
+                drawPath(path = ribbonPath, color = ribbonBlue)
+                drawPath(path = ribbonPath, color = mainColor, style = Stroke(width = 2.0f))
+                
+                // Detalle blanco de la cinta
+                drawLine(
+                    color = Color.White,
+                    start = Offset(w * 0.285f, h * 0.34f),
+                    end = Offset(w * 0.715f, h * 0.34f),
+                    strokeWidth = 2f
+                )
+
+                // Ala del Sombrero (Brim) - amplia y elegante
+                val brimPath = Path().apply {
+                    moveTo(w * 0.10f, h * 0.36f)
+                    quadraticTo(w * 0.5f, h * 0.44f, w * 0.90f, h * 0.36f)
+                    quadraticTo(w * 0.5f, h * 0.28f, w * 0.10f, h * 0.36f)
+                    close()
+                }
+                drawPath(path = brimPath, color = strawColor)
+                drawPath(path = brimPath, color = mainColor, style = Stroke(width = 4.0f))
             }
 
             if (pose == "working" || pose == "exam" || accessory == "glasses") {

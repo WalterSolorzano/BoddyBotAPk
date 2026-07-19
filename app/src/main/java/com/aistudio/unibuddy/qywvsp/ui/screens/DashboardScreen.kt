@@ -7,6 +7,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.animation.core.*
 
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -332,14 +340,15 @@ fun DashboardScreen(
         BuddyCalendarPromptWidget(viewModel = viewModel)
 
         // --- 2d. UniBuddy Salvavidas SOS Trigger ---
+        val isVacation = semesterState == "Vacaciones"
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { showSalvavidasDialog = true }
                 .testTag("unibuddy_salvavidas_trigger"),
-            colors = CardDefaults.cardColors(containerColor = ProRed.copy(alpha = 0.08f)),
+            colors = CardDefaults.cardColors(containerColor = if (isVacation) ProBlue.copy(alpha = 0.08f) else ProRed.copy(alpha = 0.08f)),
             shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, ProRed.copy(alpha = 0.25f))
+            border = BorderStroke(1.dp, if (isVacation) ProBlue.copy(alpha = 0.25f) else ProRed.copy(alpha = 0.25f))
         ) {
             Row(
                 modifier = Modifier
@@ -352,25 +361,25 @@ fun DashboardScreen(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(ProRed.copy(alpha = 0.15f)),
+                        .background(if (isVacation) ProBlue.copy(alpha = 0.15f) else ProRed.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.MedicalServices,
+                        imageVector = if (isVacation) Icons.Rounded.Calculate else Icons.Rounded.MedicalServices,
                         contentDescription = "Salvavidas",
-                        tint = ProRed,
+                        tint = if (isVacation) ProBlue else ProRed,
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "UniBuddy Salvavidas Académico",
+                        text = if (isVacation) "Simulador Académico UniBuddy" else "UniBuddy Salvavidas Académico",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = NavyBlue
                     )
                     Text(
-                        text = "Calculadora SOS: ¿Cuánto necesitas para salvar el semestre?",
+                        text = if (isVacation) "Simulador interactivo: Planifica tu promedio y simula notas" else "Calculadora SOS: ¿Cuánto necesitas para salvar el semestre?",
                         fontSize = 10.sp,
                         color = SlateGray,
                         fontWeight = FontWeight.Medium
@@ -611,6 +620,20 @@ fun DashboardScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // --- 4b. Mapa interactivo de trayecto ---
+        InteractiveCommuteMap(
+            isTripActive = isTripActive,
+            tripElapsedSeconds = tripElapsedSeconds,
+            currentDistanceToCollege = currentDistanceToCollege,
+            locationBasedTravelTime = locationBasedTravelTime,
+            semesterState = semesterState,
+            onConfigureRoute = onConfigureRoute
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
         // --- 5. Avisos contextuales (Up to 2 dynamic alerts) ---
         val dynamicNotices = remember(subjects, absences, tasks, calculatedStress, semesterState) {
             val list = mutableListOf<Pair<String, String>>()
@@ -831,6 +854,285 @@ fun DashboardScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun InteractiveCommuteMap(
+    isTripActive: Boolean,
+    tripElapsedSeconds: Int,
+    currentDistanceToCollege: Double?,
+    locationBasedTravelTime: Int,
+    semesterState: String,
+    onConfigureRoute: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isVacation = semesterState == "Vacaciones"
+    
+    // Animating dash phase for the route path to make it crawl/animate nicely
+    val infiniteTransition = rememberInfiniteTransition(label = "map_animations")
+    val dashPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 100f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "dash_phase"
+    )
+
+    // Moving progress indicator for active trip (restarts/cycles or is based on elapsed time)
+    val tripProgress by infiniteTransition.animateFloat(
+        initialValue = 0.05f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(6000, easing = LinearOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "trip_progress"
+    )
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(180.dp)
+            .clickable { onConfigureRoute() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)), // Deep Slate Dark Blue map background
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Draw Map Canvas
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                
+                // Drawing background streets
+                val streetColor = Color(0xFF334155).copy(alpha = 0.3f)
+                drawLine(color = streetColor, start = Offset(w * 0.1f, 0f), end = Offset(w * 0.1f, h), strokeWidth = 2f)
+                drawLine(color = streetColor, start = Offset(w * 0.5f, 0f), end = Offset(w * 0.5f, h), strokeWidth = 2f)
+                drawLine(color = streetColor, start = Offset(w * 0.85f, 0f), end = Offset(w * 0.85f, h), strokeWidth = 2f)
+                drawLine(color = streetColor, start = Offset(0f, h * 0.3f), end = Offset(w, h * 0.3f), strokeWidth = 2f)
+                drawLine(color = streetColor, start = Offset(0f, h * 0.7f), end = Offset(w, h * 0.7f), strokeWidth = 2f)
+                
+                // Secondary curved faint roads
+                val roadPath1 = Path().apply {
+                    moveTo(0f, h * 0.2f)
+                    quadraticTo(w * 0.3f, h * 0.5f, w, h * 0.4f)
+                }
+                drawPath(path = roadPath1, color = streetColor, style = Stroke(width = 4f))
+
+                val roadPath2 = Path().apply {
+                    moveTo(w * 0.2f, h)
+                    quadraticTo(w * 0.7f, h * 0.4f, w * 0.9f, 0f)
+                }
+                drawPath(path = roadPath2, color = streetColor, style = Stroke(width = 4f))
+
+                // main active route path connecting home/start to destination
+                val routePath = Path().apply {
+                    moveTo(w * 0.15f, h * 0.75f) // start node
+                    cubicTo(
+                        w * 0.4f, h * 0.2f,
+                        w * 0.6f, h * 0.9f,
+                        w * 0.85f, h * 0.25f // end node
+                    )
+                }
+
+                // Draw thick glow path
+                drawPath(
+                    path = routePath,
+                    color = if (isVacation) MintGreen.copy(alpha = 0.2f) else ProBlue.copy(alpha = 0.2f),
+                    style = Stroke(width = 10f, cap = StrokeCap.Round)
+                )
+
+                // Draw active dashed path
+                drawPath(
+                    path = routePath,
+                    color = if (isVacation) MintGreen else ProBlue,
+                    style = Stroke(
+                        width = 4f,
+                        cap = StrokeCap.Round,
+                        pathEffect = PathEffect.dashPathEffect(
+                            intervals = floatArrayOf(15f, 15f),
+                            phase = -dashPhase
+                        )
+                    )
+                )
+
+                // Start Node (Mi Casa o Inicio)
+                drawCircle(
+                    color = if (isVacation) MintGreen.copy(alpha = 0.3f) else ProBlue.copy(alpha = 0.3f),
+                    radius = 16f,
+                    center = Offset(w * 0.15f, h * 0.75f)
+                )
+                drawCircle(
+                    color = if (isVacation) MintGreen else ProBlue,
+                    radius = 8f,
+                    center = Offset(w * 0.15f, h * 0.75f)
+                )
+
+                // End Node (Universidad o Destino Vacacional)
+                drawCircle(
+                    color = if (isVacation) Terracotta.copy(alpha = 0.3f) else Amber.copy(alpha = 0.3f),
+                    radius = 20f,
+                    center = Offset(w * 0.85f, h * 0.25f)
+                )
+                drawCircle(
+                    color = if (isVacation) Terracotta else Amber,
+                    radius = 10f,
+                    center = Offset(w * 0.85f, h * 0.25f)
+                )
+
+                // Draw moving mascot pointer if trip active, or draw stationary halfway
+                val activeProgress = if (isTripActive) tripProgress else 0.5f
+                
+                // Get coordinates along the cubic Bezier path
+                val t = activeProgress
+                val mt = 1f - t
+                val p0 = Offset(w * 0.15f, h * 0.75f)
+                val p1 = Offset(w * 0.4f, h * 0.2f)
+                val p2 = Offset(w * 0.6f, h * 0.9f)
+                val p3 = Offset(w * 0.85f, h * 0.25f)
+
+                val mascotX = mt*mt*mt * p0.x + 3*mt*mt*t * p1.x + 3*mt*t*t * p2.x + t*t*t * p3.x
+                val mascotY = mt*mt*mt * p0.y + 3*mt*mt*t * p1.y + 3*mt*t*t * p2.y + t*t*t * p3.y
+
+                // Outer glowing circle for active buddy pointer
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.25f),
+                    radius = 18f,
+                    center = Offset(mascotX, mascotY)
+                )
+                drawCircle(
+                    color = if (isVacation) MintGreen else ProBlue,
+                    radius = 10f,
+                    center = Offset(mascotX, mascotY)
+                )
+                // Small core dot
+                drawCircle(
+                    color = Color.White,
+                    radius = 4f,
+                    center = Offset(mascotX, mascotY)
+                )
+            }
+
+            // High impact overlay labels: Home / Destination Name
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                    .align(Alignment.TopCenter),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Left side: Origin
+                Column {
+                    Text(
+                        text = "ORIGEN",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.5f),
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = if (isVacation) "Mi Hogar" else "Mi Casa",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                // Right side: Destination
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "DESTINO",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.5f),
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = if (isVacation) "Laguna de Apoyo" else "Uni Campus",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            // Big ETA Overlay card inside the map
+            Card(
+                modifier = Modifier
+                    .padding(12.dp)
+                    .width(170.dp)
+                    .align(Alignment.BottomStart),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.92f)),
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.1f))
+            ) {
+                Column(modifier = Modifier.padding(8.dp)) {
+                    Text(
+                        text = if (isVacation) "TIEMPO DE DESCANSO" else "TRAYECTO ESTIMADO",
+                        fontSize = 7.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.6f),
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    
+                    val distanceText = currentDistanceToCollege?.let { String.format("%.1f km", it) } ?: "2.8 km"
+                    val minutesText = if (isVacation) "Vacaciones" else "$locationBasedTravelTime min"
+                    
+                    Text(
+                        text = minutesText,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (isVacation) MintGreen else Color(0xFF60A5FA)
+                    )
+                    
+                    Text(
+                        text = if (isVacation) "Disfrutando el receso" else "Distancia: $distanceText",
+                        fontSize = 9.5.sp,
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            // Quick instructions tag overlay
+            Box(
+                modifier = Modifier
+                    .padding(12.dp)
+                    .align(Alignment.BottomEnd)
+                    .background(
+                        color = if (isTripActive) MintGreen.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(6.dp)
+                    )
+                    .border(
+                        width = 0.5.dp,
+                        color = if (isTripActive) MintGreen else Color.White.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(6.dp)
+                    )
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isTripActive) Icons.Rounded.Navigation else Icons.Rounded.Map,
+                        contentDescription = null,
+                        tint = if (isTripActive) MintGreen else Color.White,
+                        modifier = Modifier.size(10.dp)
+                    )
+                    Text(
+                        text = if (isTripActive) "EN RUTA" else "VER MAPA",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isTripActive) MintGreen else Color.White
+                    )
                 }
             }
         }

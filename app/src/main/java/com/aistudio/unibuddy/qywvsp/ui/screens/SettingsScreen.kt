@@ -141,15 +141,15 @@ fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit)
 
         // Grid Layout for Settings
         val gridItems = listOf(
-            ConfigGridItem("Perfil", Icons.Default.Person, "Nombre, Foto, Carrera") { showProfileDialog = true },
-            ConfigGridItem("Mascota", Icons.Default.Pets, "Accesorios y Color") { showBuddyDialog = true },
-            ConfigGridItem("Rutas", Icons.Default.Place, "Origen, Destino, GPS") { showRouteDialog = true },
-            ConfigGridItem("Historial", Icons.Default.Menu, "Estadísticas pasadas") { showHistoryDialog = true },
-            ConfigGridItem("Pensum", Icons.Default.School, "Progreso de Carrera") { onNavigateToPensum() },
-            ConfigGridItem("Semestre", Icons.Default.DateRange, "Inicio, Notas, Feriados") { showSemesterDialog = true },
-            ConfigGridItem("Importar PDF", Icons.Default.Info, "Historial de Notas") { showPdfImportDialog = true },
-            ConfigGridItem("Insignias", Icons.Default.Star, "Logros y Medallas") { showBadgeDialog = true },
-            ConfigGridItem("Sistema", Icons.Default.Settings, "Backup, Reset, Reportes") { showResetDialog = true }
+            ConfigGridItem("Perfil", Icons.Rounded.Face, "Nombre, Foto, Carrera") { showProfileDialog = true },
+            ConfigGridItem("Mascota", Icons.Rounded.SmartToy, "Accesorios y Color") { showBuddyDialog = true },
+            ConfigGridItem("Rutas", Icons.Rounded.Explore, "Origen, Destino, GPS") { showRouteDialog = true },
+            ConfigGridItem("Historial", Icons.Rounded.QueryStats, "Estadísticas pasadas") { showHistoryDialog = true },
+            ConfigGridItem("Pensum", Icons.Rounded.MenuBook, "Progreso de Carrera") { onNavigateToPensum() },
+            ConfigGridItem("Semestre", Icons.Rounded.CalendarMonth, "Inicio, Notas, Feriados") { showSemesterDialog = true },
+            ConfigGridItem("Importar PDF", Icons.Rounded.DriveFolderUpload, "Historial de Notas") { showPdfImportDialog = true },
+            ConfigGridItem("Insignias", Icons.Rounded.EmojiEvents, "Logros y Medallas") { showBadgeDialog = true },
+            ConfigGridItem("Sistema", Icons.Rounded.Build, "Backup, Reset, Reportes") { showResetDialog = true }
         )
 
         LazyVerticalGrid(
@@ -442,14 +442,15 @@ fun BuddyCustomizationDialog(viewModel: UniBuddyViewModel, onDismiss: () -> Unit
         }
     }
     
-    val accessories = listOf("none", "hat", "cap", "glasses", "sunglasses", "scarf")
+    val accessories = listOf("none", "hat", "cap", "glasses", "sunglasses", "scarf", "sombrero_nica")
     val accessoriesLabels = mapOf(
         "none" to "Ninguno",
         "hat" to "Casco",
         "cap" to "Gorra",
         "glasses" to "Lentes",
         "sunglasses" to "Gafas de Sol",
-        "scarf" to "Bufanda"
+        "scarf" to "Bufanda",
+        "sombrero_nica" to "Sombrero Pita (Vacacionero)"
     )
     val colors = listOf("#4CAF50", "#2196F3", "#F44336", "#9C27B0", "#FF9800", "#607D8B")
     val poses = listOf("idle", "greeting", "working", "sleeping", "celebrating", "exam")

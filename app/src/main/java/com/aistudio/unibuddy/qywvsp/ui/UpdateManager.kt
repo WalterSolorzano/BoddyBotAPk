@@ -24,7 +24,7 @@ object UpdateManager {
 
     // Cambia esto a la URL de tu repositorio en GitHub
     // Formato: https://raw.githubusercontent.com/USUARIO/REPO/main/update.json
-    private const val UPDATE_JSON_URL = "https://raw.githubusercontent.com/TU_USUARIO/TU_REPO/main/update.json"
+    private const val UPDATE_JSON_URL = "https://raw.githubusercontent.com/WalterSolorzano/Android/main/update.json"
 
     data class UpdateInfo(
         val isUpdateAvailable: Boolean,
@@ -127,7 +127,6 @@ object UpdateManager {
             Toast.makeText(context, "Error al instalar la actualización. Búscala en Descargas.", Toast.LENGTH_LONG).show()
         }
     }
-}
 
     fun verifyBootSuccess(context: Context) {
         val prefs = context.getSharedPreferences("OTA_PREFS", Context.MODE_PRIVATE)
@@ -147,3 +146,4 @@ object UpdateManager {
             }
         }
     }
+}

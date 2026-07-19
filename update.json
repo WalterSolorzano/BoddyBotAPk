@@ -1,0 +1,10 @@
+{
+  "versionCode": 7,
+  "versionName": "1.6",
+  "apkUrl": "https://github.com/WalterSolorzano/Android/releases/download/v1.6/app-debug.apk",
+  "releaseNotes": "¡UniBuddy v1.6 ya está disponible! Descubre las nuevas características:\n\n1. 🌾 Sombrero de Pita Nica (Vacacionero): Nuevo accesorio tradicional nicaragüense con detalles azul y blanco para tu UniBuddy.\n2. 🗺️ Mapa de Trayecto Interactivo: Un nuevo mapa visual animado en la pantalla de inicio para seguir tu viaje o descanso.\n3. 🏖️ Modo Vacaciones Mejorado: Widgets y estados adaptados para el periodo vacacional.\n4. 🚀 Sistema OTA Estable: Correcciones y mejoras de rendimiento para el gestor de actualizaciones automáticas.",
+  "dynamicConfig": {
+    "vacation_promo": "true",
+    "welcome_message": "¡Felices Vacaciones te desea tu UniBuddy!"
+  }
+}

@@ -3611,7 +3611,12 @@ fun VacationScreen(viewModel: UniBuddyViewModel, onConfigureRoute: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        BuddyMascot(modifier = Modifier.size(150.dp), pose = "sleeping", mainColor = com.aistudio.unibuddy.qywvsp.ui.theme.ProBlue)
+        BuddyMascot(
+            modifier = Modifier.size(150.dp),
+            pose = "sleeping",
+            accessory = "sombrero_nica",
+            mainColor = com.aistudio.unibuddy.qywvsp.ui.theme.ProBlue
+        )
         Spacer(modifier = Modifier.height(24.dp))
         Text(
             text = "¡Estás de Vacaciones!",

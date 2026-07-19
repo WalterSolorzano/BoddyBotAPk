@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
         android.util.Log.d("UniBuddy", "MainActivity onCreate - Version Code: 6, Version Name: 1.5")
         enableEdgeToEdge()
         com.aistudio.unibuddy.qywvsp.ui.NotificationHelper.createNotificationChannel(applicationContext)
+        com.aistudio.unibuddy.qywvsp.ui.UpdateManager.verifyBootSuccess(applicationContext)
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             requestPermissions(arrayOf(
