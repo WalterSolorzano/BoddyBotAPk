@@ -84,6 +84,8 @@ fun DashboardScreen(
     val isEvenWeek by viewModel.isEvenWeek.collectAsStateWithLifecycle()
     val isTripActive by viewModel.isTripActive.collectAsStateWithLifecycle()
     val tripElapsedSeconds by viewModel.tripElapsedSeconds.collectAsStateWithLifecycle()
+    val semesterState by viewModel.semesterState.collectAsStateWithLifecycle()
+    val buddyXp by viewModel.buddyXp.collectAsStateWithLifecycle()
     var isCelebrating by remember { mutableStateOf(false) }
     var showSalvavidasDialog by remember { mutableStateOf(false) }
 
@@ -312,7 +314,11 @@ fun DashboardScreen(
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
-                    text = "Pronóstico: $weatherDescription. ${if (isRaining) "Lleva paraguas para proteger tu UniBuddy." else "Excelente día para estudiar en el campus."}",
+                    text = if (semesterState == "Vacaciones") {
+                        "Pronóstico: $weatherDescription. ${if (isRaining) "Lleva paraguas si vas a salir a pasear." else "Excelente día para relajarse y disfrutar al aire libre."}"
+                    } else {
+                        "Pronóstico: $weatherDescription. ${if (isRaining) "Lleva paraguas para proteger tu UniBuddy." else "Excelente día para estudiar en el campus."}"
+                    },
                     fontSize = 11.sp,
                     color = if (isRaining) NavyBlue else Color(0xFF5D4037),
                     fontWeight = FontWeight.Medium,
@@ -387,16 +393,15 @@ fun DashboardScreen(
         }
 
         // --- 3. Bloque del pet como elemento dominante ---
-        val buddyLevel = 1 + (viewModel.buddyXp.value / 100)
-        val buddyXp = viewModel.buddyXp.value
+        val buddyLevel = 1 + (buddyXp / 100)
         val buddyTitle = when {
             buddyLevel < 5 -> "Novato"
             buddyLevel < 10 -> "Estudiante Promedio"
             buddyLevel < 20 -> "Veterano"
             else -> "Erudito"
         }
-        val calculatedStress = (assessments.count { it.grade == null } * 15f + absences.size * 5f).coerceIn(0f, 100f)
-        val stressStatusText = when {
+        val calculatedStress = if (semesterState == "Vacaciones") 0f else (assessments.count { it.grade == null } * 15f + absences.size * 5f).coerceIn(0f, 100f)
+        val stressStatusText = if (semesterState == "Vacaciones") "Vacaciones" else when {
             calculatedStress > 70f -> "Crítico"
             calculatedStress > 40f -> "Elevado"
             else -> "Estable"
@@ -435,9 +440,10 @@ fun DashboardScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     BuddyMascot(
-                        pose = if (isCelebrating) "celebrating" else if (calculatedStress > 50) "worried" else "greeting",
+                        pose = if (isCelebrating) "celebrating" else if (semesterState == "Vacaciones") "sleeping" else if (calculatedStress > 50) "worried" else "greeting",
                         modifier = Modifier.size(130.dp),
-                        isHappy = calculatedStress <= 50 || isCelebrating,
+                        isHappy = semesterState == "Vacaciones" || calculatedStress <= 50 || isCelebrating,
+                        isWorried = semesterState != "Vacaciones" && calculatedStress > 50,
                         mainColor = try { Color(android.graphics.Color.parseColor(buddyColorStr)) } catch(e: Exception) { ProBlue }
                     )
                 }
@@ -480,9 +486,9 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(4.dp))
                 
                 Text(
-                    text = "Anímico: ${if (calculatedStress > 50) "Preocupado ($stressStatusText)" else "Feliz y Saludable ($stressStatusText)"}",
+                    text = if (semesterState == "Vacaciones") "Anímico: Descansando ($stressStatusText)" else "Anímico: ${if (calculatedStress > 50) "Preocupado ($stressStatusText)" else "Feliz y Saludable ($stressStatusText)"}",
                     fontSize = 11.sp,
-                    color = if (calculatedStress > 50) Terracotta else DarkGreen,
+                    color = if (semesterState != "Vacaciones" && calculatedStress > 50) Terracotta else DarkGreen,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -590,13 +596,13 @@ fun DashboardScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = if (nextSubject != null) departureTimeFormatted else "Sin clases hoy",
+                        text = if (semesterState == "Vacaciones") "Vacaciones" else if (nextSubject != null) departureTimeFormatted else "Sin clases hoy",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Black,
-                        color = if (nextSubject != null) ProBlue else SlateGray
+                        color = if (semesterState == "Vacaciones") MintGreen else if (nextSubject != null) ProBlue else SlateGray
                     )
                     Text(
-                        text = if (nextSubject != null) "Para llegar a tiempo" else "Disfruta tu descanso",
+                        text = if (semesterState == "Vacaciones") "Disfruta tu descanso" else if (nextSubject != null) "Para llegar a tiempo" else "Disfruta tu descanso",
                         fontSize = 11.sp,
                         color = SlateGray,
                         fontWeight = FontWeight.Medium
@@ -606,33 +612,38 @@ fun DashboardScreen(
         }
 
         // --- 5. Avisos contextuales (Up to 2 dynamic alerts) ---
-        val dynamicNotices = remember(subjects, absences, tasks, calculatedStress) {
+        val dynamicNotices = remember(subjects, absences, tasks, calculatedStress, semesterState) {
             val list = mutableListOf<Pair<String, String>>()
             
-            // Attendance critical alert
-            val criticalAttendanceSubject = subjects.find { sub ->
-                val count = absences.count { it.subjectId == sub.id }
-                count >= 3
-            }
-            if (criticalAttendanceSubject != null) {
-                val count = absences.count { it.subjectId == criticalAttendanceSubject.id }
-                list.add("¡Alerta de Faltas!" to "Tienes $count inasistencias en ${criticalAttendanceSubject.name}. ¡No acumules más!")
-            }
-            
-            // Pending tasks alert
-            val pendingTasksCount = tasks.count { !it.isCompleted }
-            if (pendingTasksCount > 0) {
-                list.add("Tareas Pendientes" to "Tienes $pendingTasksCount entregas pendientes en tu agenda académica.")
-            }
-            
-            // High stress alert fallback
-            if (list.size < 2 && calculatedStress > 60f) {
-                list.add("Nivel de Estrés Alto" to "Tu UniBuddy está preocupado. Toma un respiro en la pestaña Enfoque.")
-            }
-            
-            // General tip fallback
-            if (list.isEmpty()) {
-                list.add("Consejo del Día" to "Mantén un registro al día de tus asistencias automáticas GPS.")
+            if (semesterState == "Vacaciones") {
+                list.add("¡Feliz Descanso!" to "Aprovecha el receso para relajarte, leer o avanzar en tus proyectos personales.")
+                list.add("Siguiente Semestre" to "Tu UniBuddy te notificará cuando se acerque el inicio de clases.")
+            } else {
+                // Attendance critical alert
+                val criticalAttendanceSubject = subjects.find { sub ->
+                    val count = absences.count { it.subjectId == sub.id }
+                    count >= 3
+                }
+                if (criticalAttendanceSubject != null) {
+                    val count = absences.count { it.subjectId == criticalAttendanceSubject.id }
+                    list.add("¡Alerta de Faltas!" to "Tienes $count inasistencias en ${criticalAttendanceSubject.name}. ¡No acumules más!")
+                }
+                
+                // Pending tasks alert
+                val pendingTasksCount = tasks.count { !it.isCompleted }
+                if (pendingTasksCount > 0) {
+                    list.add("Tareas Pendientes" to "Tienes $pendingTasksCount entregas pendientes en tu agenda académica.")
+                }
+                
+                // High stress alert fallback
+                if (list.size < 2 && calculatedStress > 60f) {
+                    list.add("Nivel de Estrés Alto" to "Tu UniBuddy está preocupado. Toma un respiro en la pestaña Enfoque.")
+                }
+                
+                // General tip fallback
+                if (list.isEmpty()) {
+                    list.add("Consejo del Día" to "Mantén un registro al día de tus asistencias automáticas GPS.")
+                }
             }
             
             list.take(2)
@@ -673,7 +684,22 @@ fun DashboardScreen(
 
         // --- 6. Próxima clase ---
         val isHoliday = viewModel.isNicaraguaHoliday(System.currentTimeMillis())
-        if (isHoliday) {
+        if (semesterState == "Vacaciones") {
+            Card(
+                modifier = Modifier.fillMaxWidth().height(110.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = NavyBlue),
+                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.15f))
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("¡Disfruta tus Vacaciones!", color = Bone, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("No hay clases ni pendientes programados. ¡A descansar!", color = Bone.copy(alpha = 0.8f), fontSize = 12.sp, textAlign = TextAlign.Center)
+                    }
+                }
+            }
+        } else if (isHoliday) {
             Card(
                 modifier = Modifier.fillMaxWidth().height(110.dp),
                 shape = RoundedCornerShape(12.dp),
@@ -791,8 +817,18 @@ fun DashboardScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Rounded.CalendarToday, contentDescription = null, tint = Color(0xFF1E88E5), modifier = Modifier.size(22.dp))
                         Column {
-                            Text(text = "Sem. $currentWeek", fontSize = 15.sp, fontWeight = FontWeight.Black, color = NavyBlue)
-                            Text(text = "Progreso", fontSize = 9.sp, color = SlateGray, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (semesterState == "Vacaciones") "Vacaciones" else "Sem. $currentWeek",
+                                fontSize = if (semesterState == "Vacaciones") 11.sp else 15.sp,
+                                fontWeight = FontWeight.Black,
+                                color = NavyBlue
+                            )
+                            Text(
+                                text = if (semesterState == "Vacaciones") "Receso" else "Progreso",
+                                fontSize = 9.sp,
+                                color = SlateGray,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
