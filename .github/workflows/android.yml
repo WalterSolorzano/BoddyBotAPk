@@ -47,6 +47,12 @@ jobs:
         fi
         ls -l debug.keystore
 
+    - name: Download intact Spotify AAR
+      run: |
+        curl -sL https://github.com/spotify/android-app-remote-sdk/archive/refs/tags/v0.8.0.zip -o spotify.zip
+        unzip -q spotify.zip
+        cp android-app-remote-sdk-0.8.0/app-remote-lib/spotify-app-remote-release-0.8.0.aar app/libs/spotify-app-remote.aar
+        rm -rf spotify.zip android-app-remote-sdk-0.8.0
     - name: Build with Gradle
       run: gradle assembleDebug --stacktrace
 
