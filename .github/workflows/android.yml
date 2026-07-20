@@ -49,12 +49,25 @@ jobs:
 
     - name: Download intact Spotify AAR
       run: |
-        curl -sL https://github.com/spotify/android-app-remote-sdk/archive/refs/tags/v0.8.0.zip -o spotify.zip
+        curl -sL https://github.com/spotify/android-app-remote-sdk/archive/master.zip -o spotify.zip
         unzip -q spotify.zip
-        cp android-app-remote-sdk-0.8.0/app-remote-lib/spotify-app-remote-release-0.8.0.aar app/libs/spotify-app-remote.aar
-        rm -rf spotify.zip android-app-remote-sdk-0.8.0
+        cp android-sdk-master/app-remote-lib/spotify-app-remote-*.aar app/libs/spotify-app-remote.aar
+        rm -rf spotify.zip android-sdk-master
+        
     - name: Build with Gradle
       run: gradle assembleDebug --stacktrace
+
+    - name: Job Summary
+      if: always()
+      run: |
+        echo "### 🚀 Resumen de Compilación (Android CI)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Estado**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "✅ **¡Construcción exitosa!** El APK ha sido generado correctamente y está disponible en los artefactos." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **La construcción falló.**" >> $GITHUB_STEP_SUMMARY
+          echo "> *💡 Nota: Si el error en los logs menciona 'Our services aren't available right now', 'Cache service responded with 400' o 'exit code 9' antes de iniciar Gradle, significa que **los servidores de GitHub Actions se cayeron temporalmente**. No es un error en el código de la app, simplemente vuelve a ejecutar (Re-run all jobs).* " >> $GITHUB_STEP_SUMMARY
+        fi
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
