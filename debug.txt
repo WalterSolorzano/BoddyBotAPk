@@ -1,0 +1,12 @@
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 2. Game-style Health Bar (Vidas de Faltas Restantes)
+                Text(
+                    text = "CORAZONES DE SUPERVIVENCIA (Margen de faltas)",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = NavyBlue,
+                    letterSpacing = 0.5.sp

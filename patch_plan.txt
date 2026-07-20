@@ -1,0 +1,21 @@
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        Surface(
+            onClick = onNavigateToStudyPlan,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = ProBlue.copy(alpha = 0.1f),
+            border = BorderStroke(1.dp, ProBlue.copy(alpha = 0.3f))
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("Planificador de Estudio IA", color = ProBlue, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("Generar estrategia semanal", color = ProBlue.copy(alpha = 0.8f), fontSize = 11.sp)
+                }
+                Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "IA", tint = ProBlue, modifier = Modifier.size(20.dp))
+            }
+        }

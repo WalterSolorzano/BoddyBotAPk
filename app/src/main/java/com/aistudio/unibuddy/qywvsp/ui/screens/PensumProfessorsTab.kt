@@ -7,11 +7,13 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,31 +51,64 @@ fun PensumProfessorsTab(history: List<AcademicRecordWithSubject>, professors: Li
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Tus Profesores", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            TextButton(onClick = { sortByRating = !sortByRating }) {
-                Icon(Icons.Filled.Sort, contentDescription = "Sort")
-                Spacer(Modifier.width(4.dp))
-                Text(if (sortByRating) "Por Valoración" else "Alfabético")
-            }
-            IconButton(onClick = { onAddDummyProfessor() }) {
-                Icon(Icons.Default.Add, contentDescription = "Add Professor")
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredProfessors = remember(sortedProfessors, searchQuery, history) {
+        if (searchQuery.isBlank()) {
+            sortedProfessors
+        } else {
+            sortedProfessors.filter { prof ->
+                prof.name.contains(searchQuery, ignoreCase = true) ||
+                history.any { rec ->
+                    rec.record.professorId == prof.id && 
+                    (rec.subjectName.contains(searchQuery, ignoreCase = true) || 
+                     rec.subjectCode.contains(searchQuery, ignoreCase = true))
+                }
             }
         }
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Tus Profesores", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { sortByRating = !sortByRating }) {
+                    Icon(Icons.Filled.Sort, contentDescription = "Sort")
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (sortByRating) "Por Valoración" else "Alfabético")
+                }
+                IconButton(onClick = { onAddDummyProfessor() }) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Professor")
+                }
+            }
+        }
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Buscar por profesor o materia...", fontSize = 12.sp) },
+            leadingIcon = { Icon(imageVector = androidx.compose.material.icons.Icons.Default.Search, contentDescription = "Search") },
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = com.aistudio.unibuddy.qywvsp.ui.theme.ProBlue,
+                unfocusedBorderColor = Color.LightGray
+            ),
+            singleLine = true
+        )
         
-        if (sortedProfessors.isEmpty()) {
+        if (filteredProfessors.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No hay profesores registrados.", color = Color.Gray)
+                Text(if (searchQuery.isBlank()) "No hay profesores registrados." else "No se encontraron coincidencias.", color = Color.Gray)
             }
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(100.dp),
-                contentPadding = PaddingValues(vertical = 16.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(sortedProfessors) { prof ->
+                items(filteredProfessors) { prof ->
                     ProfessorCard(
                         professor = prof,
                         avgRating = profRatings[prof.id],

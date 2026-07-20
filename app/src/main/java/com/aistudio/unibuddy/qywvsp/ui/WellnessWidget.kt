@@ -9,6 +9,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -17,6 +20,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.*
+import androidx.compose.ui.draw.scale
 import com.aistudio.unibuddy.qywvsp.data.Assessment
 import com.aistudio.unibuddy.qywvsp.ui.theme.*
 
@@ -28,7 +33,8 @@ enum class PixelHeartType {
 fun PixelHeart(
     heartType: PixelHeartType,
     size: androidx.compose.ui.unit.Dp,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    fillColor: Color = Color(0xFFFF4D4D)
 ) {
     Canvas(modifier = modifier.size(size)) {
         val pixelSizeX = size.toPx() / 9f
@@ -79,7 +85,7 @@ fun PixelHeart(
                 if (pixelType != 0) {
                     val color = when (pixelType) {
                         1 -> Color(0xFF1E293B) // Slate outline
-                        2 -> Color(0xFFFF4D4D) // Red fill
+                        2 -> fillColor // Custom or default red fill
                         3 -> Color(0xFFFFFFFF) // White shine highlight
                         else -> Color.Transparent
                     }
@@ -185,6 +191,67 @@ fun WellnessWidget(
                 fontSize = 12.sp,
                 color = DarkGray
             )
+        }
+    }
+}
+
+@Composable
+fun SubjectLivesIndicator(
+    subAbsCount: Int,
+    maxAbs: Int,
+    modifier: Modifier = Modifier,
+    heartSize: androidx.compose.ui.unit.Dp = 20.dp
+) {
+    val remaining = maxAbs - subAbsCount
+    val isWarning = remaining == 1
+    val isCritical = remaining <= 0
+
+    // Pulse animation for warning state (exactly 1 remaining life)
+    val infiniteTransition = rememberInfiniteTransition(label = "WarningPulse")
+    val scale by if (isWarning) {
+        infiniteTransition.animateFloat(
+            initialValue = 0.9f,
+            targetValue = 1.15f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(600, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "heartScale"
+        )
+    } else {
+        remember { mutableStateOf(1f) }
+    }
+
+    val warningColor = if (isWarning) Color(0xFFF59E0B) else Color(0xFFFF4D4D)
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+    ) {
+        if (maxAbs <= 0) {
+            Text("Alto riesgo (0 faltas permitidas)", fontSize = 11.sp, color = Terracotta, fontWeight = FontWeight.Bold)
+        } else {
+            val displayMax = maxAbs.coerceAtMost(8)
+            val displayRemaining = remaining.coerceAtLeast(0).coerceAtMost(displayMax)
+
+            for (i in 1..displayMax) {
+                val isAvailable = i <= displayRemaining
+                val heartType = if (isAvailable) PixelHeartType.FULL else PixelHeartType.EMPTY
+                
+                // Animate only the active remaining heart if it's the last one left
+                val isAnimatingHeart = isWarning && isAvailable && i == 1
+
+                PixelHeart(
+                    heartType = heartType,
+                    size = heartSize,
+                    fillColor = if (isWarning && isAvailable) warningColor else Color(0xFFFF4D4D),
+                    modifier = if (isAnimatingHeart) Modifier.scale(scale) else Modifier
+                )
+            }
+            if (maxAbs > 8) {
+                Text("+${maxAbs - 8}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SlateGray)
+            }
         }
     }
 }

@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.Surface
 import com.aistudio.unibuddy.qywvsp.data.Task
 import com.aistudio.unibuddy.qywvsp.data.Subject
 import androidx.compose.ui.layout.ContentScale
@@ -68,7 +69,9 @@ fun DashboardScreen(
     onConfigureRoute: () -> Unit,
     onNavigateToFocus: () -> Unit,
     onNavigateToStats: () -> Unit,
-    onNavigateToPensum: () -> Unit
+    onNavigateToPensum: () -> Unit,
+    onNavigateToTutor: () -> Unit,
+    onNavigateToStudyPlan: () -> Unit
 ) {
     val username by viewModel.username.collectAsStateWithLifecycle()
     val subjects by viewModel.subjects.collectAsStateWithLifecycle()
@@ -305,12 +308,33 @@ fun DashboardScreen(
                     modifier = Modifier.size(18.dp)
                 )
             }
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        Surface(
+            onClick = onNavigateToStudyPlan,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = ProBlue.copy(alpha = 0.1f),
+            border = BorderStroke(1.dp, ProBlue.copy(alpha = 0.3f))
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("Planificador de Estudio IA", color = ProBlue, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("Generar estrategia semanal", color = ProBlue.copy(alpha = 0.8f), fontSize = 11.sp)
+                }
+                Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "IA", tint = ProBlue, modifier = Modifier.size(20.dp))
+            }
+        }
         }
 
         // --- 2b. Aviso de clima ---
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = if (isRaining) Color(0xFFE8F0FE) else Color(0xFFFFF9C4)),
+            colors = CardDefaults.cardColors(containerColor = if (isRaining) ProBlue.copy(alpha = 0.08f) else Amber.copy(alpha = 0.08f)),
             shape = RoundedCornerShape(12.dp),
             border = BorderStroke(0.5.dp, (if (isRaining) ProBlue else Amber).copy(alpha = 0.2f))
         ) {
@@ -330,13 +354,9 @@ fun DashboardScreen(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = if (semesterState == "Vacaciones") {
-                            "Pronóstico: $weatherDescription. ${if (isRaining) "Lleva paraguas si vas a salir a pasear." else "Excelente día para relajarse y disfrutar al aire libre."}"
-                        } else {
-                            "Pronóstico: $weatherDescription. ${if (isRaining) "Lleva paraguas para proteger tu UniBuddy." else "Excelente día para estudiar en el campus."}"
-                        },
+                        text = "Pronóstico: $weatherDescription. ${if (isRaining) "Lleva paraguas para proteger tu UniBuddy." else "Excelente día para estudiar en el campus."}",
                         fontSize = 11.sp,
-                        color = if (isRaining) NavyBlue else Color(0xFF5D4037),
+                        color = if (isRaining) NavyBlue else Color(0xFF78350F),
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.weight(1f)
                     )
@@ -416,8 +436,13 @@ fun DashboardScreen(
             buddyLevel < 20 -> "Veterano"
             else -> "Erudito"
         }
-        val calculatedStress = if (semesterState == "Vacaciones") 0f else (assessments.count { it.grade == null } * 15f + absences.size * 5f).coerceIn(0f, 100f)
-        val stressStatusText = if (semesterState == "Vacaciones") "Vacaciones" else when {
+        val currentPeriodAssessmentsCount = assessments.count {
+            val isC1 = it.name.contains("C1", ignoreCase = true) || it.name.contains("U1", ignoreCase = true)
+            val matchesPeriod = if (currentWeek <= 8) isC1 else !isC1
+            matchesPeriod && it.grade == null
+        }
+        val calculatedStress = if (semesterState == "Vacaciones") 0f else (currentPeriodAssessmentsCount * 15f + absences.size * 5f).coerceIn(0f, 100f)
+        val stressStatusText = if (semesterState == "Vacaciones") "Estable" else when {
             calculatedStress > 70f -> "Crítico"
             calculatedStress > 40f -> "Elevado"
             else -> "Estable"
@@ -449,7 +474,7 @@ fun DashboardScreen(
                 // Dominant mascot rendering
                 Box(
                     modifier = Modifier
-                        .size(170.dp)
+                        .size(240.dp)
                         .clip(CircleShape)
                         .background(Color(0xFFF5F5F5))
                         .border(0.5.dp, NavyBlue.copy(alpha = 0.1f), CircleShape),
@@ -457,7 +482,7 @@ fun DashboardScreen(
                 ) {
                     BuddyMascot(
                         pose = if (isCelebrating) "celebrating" else if (semesterState == "Vacaciones") "sleeping" else if (calculatedStress > 50) "worried" else "greeting",
-                        modifier = Modifier.size(130.dp),
+                        modifier = Modifier.size(200.dp),
                         isHappy = semesterState == "Vacaciones" || calculatedStress <= 50 || isCelebrating,
                         isWorried = semesterState != "Vacaciones" && calculatedStress > 50,
                         mainColor = try { Color(android.graphics.Color.parseColor(buddyColorStr)) } catch(e: Exception) { ProBlue }
@@ -502,7 +527,7 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(4.dp))
                 
                 Text(
-                    text = if (semesterState == "Vacaciones") "Anímico: Descansando ($stressStatusText)" else "Anímico: ${if (calculatedStress > 50) "Preocupado ($stressStatusText)" else "Feliz y Saludable ($stressStatusText)"}",
+                    text = if (semesterState == "Vacaciones") "Anímico: Durmiendo placenteramente ($stressStatusText)" else "Anímico: ${if (calculatedStress > 50) "Preocupado ($stressStatusText)" else "Feliz y Saludable ($stressStatusText)"}",
                     fontSize = 11.sp,
                     color = if (semesterState != "Vacaciones" && calculatedStress > 50) Terracotta else DarkGreen,
                     fontWeight = FontWeight.SemiBold
@@ -510,7 +535,7 @@ fun DashboardScreen(
             }
         }
 
-        // --- 4. Bloque de trayecto / salida recomendada (2-Column Grid) ---
+        // --- 4. Bloque de trayecto / salida recomendada (Consolidado) ---
         val parsedTime = remember(nextClassTime) {
             if (nextClassTime != "Sin Horario") {
                 com.aistudio.unibuddy.qywvsp.ui.parseStartTime(nextClassTime)
@@ -534,94 +559,172 @@ fun DashboardScreen(
             } ?: "Sin salida"
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            // Columna 1: Estado del viaje actual
+        val isTravelRelevant = semesterState != "Vacaciones" && nextSubject != null
+
+        if (!isTravelRelevant) {
+            // Versión mínima de una línea cuando no aplica (ej. en vacaciones o sin clases)
             Card(
                 modifier = Modifier
-                    .weight(1f)
+                    .fillMaxWidth()
                     .clickable { onConfigureRoute() },
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(0.5.dp, NavyBlue.copy(alpha = 0.15f))
+                border = BorderStroke(0.5.dp, NavyBlue.copy(alpha = 0.1f))
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "VIAJE ACTUAL",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = SlateGray,
-                        letterSpacing = 0.5.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(if (isTripActive) MintGreen else SlateGray)
+                        Icon(
+                            imageVector = Icons.Rounded.DirectionsCar,
+                            contentDescription = null,
+                            tint = SlateGray,
+                            modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = if (isTripActive) "Viaje Activo" else "Viaje Inactivo",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NavyBlue
+                            text = if (semesterState == "Vacaciones") {
+                                "Trayecto al campus: No aplica en período de receso"
+                            } else {
+                                "Trayecto al campus: No programado para hoy"
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = SlateGray
                         )
                     }
-                    if (isTripActive) {
-                        val activeMinutes = tripElapsedSeconds / 60
-                        val activeSeconds = tripElapsedSeconds % 60
-                        Text(
-                            text = String.format("%02d:%02d transcurrido", activeMinutes, activeSeconds),
-                            fontSize = 11.sp,
-                            color = SlateGray,
-                            fontWeight = FontWeight.Medium
-                        )
-                    } else {
-                        Text(
-                            text = "Pulsa para iniciar ruta",
-                            fontSize = 11.sp,
-                            color = SlateGray,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Text(
+                        text = "Configurar",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ProBlue
+                    )
                 }
             }
-            
-            // Columna 2: Recomendación de salida
+        } else {
+            // Detalle expandido cuando hay clase o trayecto relevante
             Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onConfigureRoute() },
+                modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(0.5.dp, NavyBlue.copy(alpha = 0.15f))
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
-                        text = "SALIDA RECOMENDADA",
-                        fontSize = 9.sp,
+                        text = "TRAYECTO AL CAMPUS",
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = SlateGray,
                         letterSpacing = 0.5.sp
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = if (semesterState == "Vacaciones") "Vacaciones" else if (nextSubject != null) departureTimeFormatted else "Sin clases hoy",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Black,
-                        color = if (semesterState == "Vacaciones") MintGreen else if (nextSubject != null) ProBlue else SlateGray
-                    )
-                    Text(
-                        text = if (semesterState == "Vacaciones") "Disfruta tu descanso" else if (nextSubject != null) "Para llegar a tiempo" else "Disfruta tu descanso",
-                        fontSize = 11.sp,
-                        color = SlateGray,
-                        fontWeight = FontWeight.Medium
+                    Spacer(modifier = Modifier.height(10.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Sub-card 1: Estado del viaje actual
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onConfigureRoute() },
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = "VIAJE ACTUAL",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = SlateGray
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isTripActive) MintGreen else SlateGray)
+                                    )
+                                    Text(
+                                        text = if (isTripActive) "Activo" else "Inactivo",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = NavyBlue
+                                    )
+                                }
+                                if (isTripActive) {
+                                    val activeMinutes = tripElapsedSeconds / 60
+                                    val activeSeconds = tripElapsedSeconds % 60
+                                    Text(
+                                        text = String.format("%02d:%02d transcurrido", activeMinutes, activeSeconds),
+                                        fontSize = 10.sp,
+                                        color = SlateGray,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                } else {
+                                    Text(
+                                        text = "Iniciar ruta",
+                                        fontSize = 10.sp,
+                                        color = ProBlue,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                        
+                        // Sub-card 2: Recomendación de salida
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onConfigureRoute() },
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = "SALIDA RECOMENDADA",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = SlateGray
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = departureTimeFormatted,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ProBlue
+                                )
+                                Text(
+                                    text = "Para llegar a tiempo",
+                                    fontSize = 10.sp,
+                                    color = SlateGray,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(10.dp))
+                    
+                    // Embedded Map inside the unified trayecto block
+                    InteractiveCommuteMap(
+                        isTripActive = isTripActive,
+                        tripElapsedSeconds = tripElapsedSeconds,
+                        currentDistanceToCollege = currentDistanceToCollege,
+                        locationBasedTravelTime = locationBasedTravelTime,
+                        semesterState = semesterState,
+                        onConfigureRoute = onConfigureRoute,
+                        modifier = Modifier.height(140.dp)
                     )
                 }
             }
@@ -629,26 +732,11 @@ fun DashboardScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // --- 4b. Mapa interactivo de trayecto ---
-        InteractiveCommuteMap(
-            isTripActive = isTripActive,
-            tripElapsedSeconds = tripElapsedSeconds,
-            currentDistanceToCollege = currentDistanceToCollege,
-            locationBasedTravelTime = locationBasedTravelTime,
-            semesterState = semesterState,
-            onConfigureRoute = onConfigureRoute
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // --- 5. Avisos contextuales (Up to 2 dynamic alerts) ---
+        // --- 5. Avisos contextuales (Oculto durante vacaciones para evitar duplicados) ---
         val dynamicNotices = remember(subjects, absences, tasks, calculatedStress, semesterState) {
             val list = mutableListOf<Pair<String, String>>()
             
-            if (semesterState == "Vacaciones") {
-                list.add("¡Feliz Descanso!" to "Aprovecha el receso para relajarte, leer o avanzar en tus proyectos personales.")
-                list.add("Siguiente Semestre" to "Tu UniBuddy te notificará cuando se acerque el inicio de clases.")
-            } else {
+            if (semesterState != "Vacaciones") {
                 // Attendance critical alert
                 val criticalAttendanceSubject = subjects.find { sub ->
                     val count = absences.count { it.subjectId == sub.id }
@@ -712,21 +800,52 @@ fun DashboardScreen(
             }
         }
 
-        // --- 6. Próxima clase ---
+        // --- 6. Próxima clase / Consolidated Recess Banner ---
         val isHoliday = viewModel.isNicaraguaHoliday(System.currentTimeMillis())
         if (semesterState == "Vacaciones") {
             Card(
-                modifier = Modifier.fillMaxWidth().height(110.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = NavyBlue),
-                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.15f))
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)), // Deep Slate Dark Blue
+                border = BorderStroke(1.dp, MintGreen.copy(alpha = 0.3f))
             ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("¡Disfruta tus Vacaciones!", color = Bone, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("No hay clases ni pendientes programados. ¡A descansar!", color = Bone.copy(alpha = 0.8f), fontSize = 12.sp, textAlign = TextAlign.Center)
-                    }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Celebration,
+                        contentDescription = null,
+                        tint = MintGreen,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "PERÍODO DE RECESO ACTIVO",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MintGreen,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "¡Disfruta tus merecidas vacaciones!",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Tu UniBuddy está durmiendo. No hay clases, evaluaciones ni trayectos programados.",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 15.sp
+                    )
                 }
             }
         } else if (isHoliday) {

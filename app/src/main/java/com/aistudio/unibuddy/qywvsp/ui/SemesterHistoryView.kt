@@ -65,6 +65,7 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel, onBack: (() -> Unit)? = nu
     val assessments by viewModel.assessments.collectAsStateWithLifecycle()
     val tripRecords by viewModel.tripRecords.collectAsStateWithLifecycle()
     val seasonRecaps by viewModel.seasonRecaps.collectAsStateWithLifecycle()
+    val currentWeek by viewModel.currentWeekOfSemester.collectAsStateWithLifecycle()
 
     var logTab by remember { mutableStateOf("insights") }
 
@@ -378,7 +379,13 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel, onBack: (() -> Unit)? = nu
         }
 
         // Grade Goals Calculator / GPA Predictor Card
-        val pendingExamsCount = remember(assessments) { assessments.count { it.grade == null } }
+        val pendingExamsCount = remember(assessments, currentWeek) {
+            assessments.count {
+                val isC1 = it.name.contains("C1", ignoreCase = true) || it.name.contains("U1", ignoreCase = true)
+                val matchesPeriod = if (currentWeek <= 8) isC1 else !isC1
+                matchesPeriod && it.grade == null
+            }
+        }
         if (pendingExamsCount > 0) {
             val university by viewModel.userUniversity.collectAsStateWithLifecycle()
             val passingGrade = if (university == "UAM" || university == "UCA" || university == "Keiser") 70.0f else 60.0f

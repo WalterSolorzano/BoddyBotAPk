@@ -183,7 +183,8 @@ data class AcademicRecordWithSubject(
     @ColumnInfo(name = "name") val subjectName: String,
     @ColumnInfo(name = "semester") val semester: String,
     @ColumnInfo(name = "credits") val credits: Double,
-    @ColumnInfo(name = "isNumbers") val isNumbers: Boolean
+    @ColumnInfo(name = "isNumbers") val isNumbers: Boolean,
+    @ColumnInfo(name = "code") val subjectCode: String = ""
 )
 
 @Entity(tableName = "trip_records")
@@ -351,7 +352,7 @@ interface AcademicRecordDao {
     fun getAllRecords(): Flow<List<AcademicRecord>>
 
     @Query("""
-        SELECT ar.*, ps.name as name, 
+        SELECT ar.*, ps.name as name, ps.code as code, 
                (CASE WHEN ar.year IS NOT NULL AND ar.year != '' AND ar.year != 'S/D' THEN ar.year ELSE ps.semester END) as semester, 
                ps.credits as credits, ps.isNumbers as isNumbers 
         FROM academic_records ar 

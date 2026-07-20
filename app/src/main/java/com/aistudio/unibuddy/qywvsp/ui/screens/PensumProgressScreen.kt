@@ -4,12 +4,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.aistudio.unibuddy.qywvsp.data.AcademicRecordWithSubject
 import com.aistudio.unibuddy.qywvsp.data.CurriculumData
 import com.aistudio.unibuddy.qywvsp.data.Professor
@@ -50,36 +53,54 @@ fun PensumProgressScreen(viewModel: UniBuddyViewModel, onBack: () -> Unit) {
         CurriculumData.getSubjectsFor(university, career)
     }
 
+    val passingGrade = remember(university) {
+        if (university == "UAM" || university == "UCA" || university == "Keiser") 70.0 else 60.0
+    }
+
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Mapa", "Estadísticas", "Profesores")
+    val tabs = listOf("Mapa", "Estadísticas", "Profesores", "Semestres")
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Mi Carrera") },
+                title = { Text("Mi Carrera", fontWeight = FontWeight.Bold, color = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back", tint = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            TabRow(selectedTabIndex = selectedTabIndex) {
+            TabRow(
+                selectedTabIndex = selectedTabIndex,
+                containerColor = Color.White,
+                contentColor = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue,
+                indicator = { tabPositions ->
+                    TabRowDefaults.Indicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
+                        color = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue
+                    )
+                }
+            ) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTabIndex == index,
                         onClick = { selectedTabIndex = index },
-                        text = { Text(title) }
+                        text = { Text(title, fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                        selectedContentColor = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue,
+                        unselectedContentColor = Color.Gray
                     )
                 }
             }
             
             when (selectedTabIndex) {
-                0 -> PensumMapTab(staticPensum, history, professors, ongoingSubjectNames)
-                1 -> PensumStatsTab(staticPensum, history)
+                0 -> PensumMapTab(staticPensum, history, professors, ongoingSubjectNames, passingGrade)
+                1 -> PensumStatsTab(staticPensum, history, passingGrade)
                 2 -> PensumProfessorsTab(history, professors, onAddDummyProfessor = { viewModel.addDummyProfessor() })
+                3 -> PensumSemestersTab(staticPensum, history, professors, passingGrade)
             }
         }
     }

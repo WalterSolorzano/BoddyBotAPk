@@ -36,6 +36,18 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
     private val _updateInfo = MutableStateFlow<UpdateManager.UpdateInfo?>(null)
     val updateInfo: StateFlow<UpdateManager.UpdateInfo?> = _updateInfo.asStateFlow()
 
+    private val _tutorChatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
+    val tutorChatMessages: StateFlow<List<ChatMessage>> = _tutorChatMessages.asStateFlow()
+
+    private val _isTutorTyping = MutableStateFlow(false)
+    val isTutorTyping: StateFlow<Boolean> = _isTutorTyping.asStateFlow()
+
+    private val _studyPlan = MutableStateFlow<String?>(null)
+    val studyPlan: StateFlow<String?> = _studyPlan.asStateFlow()
+
+    private val _isGeneratingPlan = MutableStateFlow(false)
+    val isGeneratingPlan: StateFlow<Boolean> = _isGeneratingPlan.asStateFlow()
+
     init {
         checkForUpdates()
         val db = AppDatabase.getDatabase(application)
@@ -2302,6 +2314,112 @@ class UniBuddyViewModel(application: Application) : AndroidViewModel(application
             } catch (e: Exception) {
                 e.printStackTrace()
                 false
+            }
+        }
+    }
+
+    fun initTutorForSubject(subject: Subject) {
+        val welcomeMsg = ChatMessage(
+            text = "¡Hola! Soy tu Tutor IA. Estoy aquí para ayudarte a estudiar para la materia de ${subject.name}. Puedes preguntarme cualquier duda sobre tus temas o pedirme que te haga un resumen.",
+            isUser = false
+        )
+        _tutorChatMessages.value = listOf(welcomeMsg)
+    }
+
+    fun sendTutorMessage(text: String, subject: Subject?) {
+        val userMsg = ChatMessage(text = text, isUser = true)
+        _tutorChatMessages.value = _tutorChatMessages.value + userMsg
+        _isTutorTyping.value = true
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val apiKey = com.aistudio.unibuddy.qywvsp.BuildConfig.GEMINI_API_KEY
+            if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
+                val errorMsg = ChatMessage(text = "El API Key de Gemini no está configurado. Por favor, añádelo en los ajustes (Secrets).", isUser = false)
+                _tutorChatMessages.value = _tutorChatMessages.value + errorMsg
+                _isTutorTyping.value = false
+                return@launch
+            }
+
+            val subjectContext = if (subject != null) "La materia es ${subject.name}." else "Eres un asistente académico general."
+            val systemInstructionText = "Eres un tutor académico IA de UniBuddy. $subjectContext Eres paciente, respondes de forma clara, directa y muy educativa. Evita usar demasiados emojis, mantén un tono profesional pero amable, adaptado para un estudiante universitario."
+
+            val history = _tutorChatMessages.value.takeLast(10).map {
+                Content(role = if (it.isUser) "user" else "model", parts = listOf(Part(text = it.text)))
+            }
+
+            val request = GenerateContentRequest(
+                contents = history,
+                systemInstruction = Content(role = "user", parts = listOf(Part(text = systemInstructionText)))
+            )
+
+            try {
+                val response = RetrofitClient.service.generateContent(apiKey, request)
+                val replyText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: "Lo siento, no pude generar una respuesta."
+                val replyMsg = ChatMessage(text = replyText, isUser = false)
+                _tutorChatMessages.value = _tutorChatMessages.value + replyMsg
+            } catch (e: Exception) {
+                e.printStackTrace()
+                val errorMsg = ChatMessage(text = "Ocurrió un error al contactar con el Tutor IA: ${e.message}", isUser = false)
+                _tutorChatMessages.value = _tutorChatMessages.value + errorMsg
+            } finally {
+                _isTutorTyping.value = false
+            }
+        }
+    }
+
+    fun generateStudyPlan() {
+        _isGeneratingPlan.value = true
+        _studyPlan.value = null
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val apiKey = com.aistudio.unibuddy.qywvsp.BuildConfig.GEMINI_API_KEY
+            if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
+                _studyPlan.value = "El API Key de Gemini no está configurado. Por favor, añádelo en los ajustes (Secrets)."
+                _isGeneratingPlan.value = false
+                return@launch
+            }
+
+            val subjectList = repository.subjects.first()
+            if (subjectList.isEmpty()) {
+                _studyPlan.value = "Aún no tienes materias registradas para analizar."
+                _isGeneratingPlan.value = false
+                return@launch
+            }
+
+            val allAssessments = repository.assessments.first()
+            val allAbsences = repository.absences.first()
+
+            val contextBuilder = StringBuilder("Datos del estudiante:\n")
+            for (subject in subjectList) {
+                val subAssessments = allAssessments.filter { it.subjectId == subject.id }
+                val subAbsences = allAbsences.filter { it.subjectId == subject.id }.size
+                val currentAvg = subAssessments.filter { it.grade != null }.sumOf { it.grade!! }
+                val pointsLost = subAssessments.filter { it.grade != null }.sumOf { it.percentage - it.grade!! }
+                
+                contextBuilder.append("- Materia: ${subject.name}\n")
+                contextBuilder.append("  Puntos perdidos: $pointsLost%\n")
+                contextBuilder.append("  Faltas registradas: $subAbsences (Máximo permitido: ${subject.totalClasses})\n")
+                if (subAssessments.isNotEmpty()) {
+                    contextBuilder.append("  Próximas evaluaciones: ${subAssessments.filter { it.grade == null }.joinToString { "${it.name} (${it.percentage}%)" }}\n")
+                }
+            }
+
+            val systemInstruction = "Eres un planificador académico inteligente. Basado en los datos del estudiante, genera un plan de estudio semanal claro y conciso. Prioriza las materias donde el estudiante ha perdido más puntos o tiene más faltas. Usa un tono motivador, profesional y directo. No uses emojis."
+            
+            val request = GenerateContentRequest(
+                contents = listOf(Content(role = "user", parts = listOf(Part(text = contextBuilder.toString())))),
+                systemInstruction = Content(role = "user", parts = listOf(Part(text = systemInstruction)))
+            )
+
+            try {
+                val response = RetrofitClient.service.generateContent(apiKey, request)
+                val replyText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: "No pude generar el plan."
+                _studyPlan.value = replyText
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _studyPlan.value = "Error al conectar con la IA: ${e.message}"
+            } finally {
+                _isGeneratingPlan.value = false
             }
         }
     }

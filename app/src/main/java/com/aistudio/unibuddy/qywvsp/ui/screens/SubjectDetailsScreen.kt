@@ -61,7 +61,7 @@ import kotlinx.coroutines.launch
 
 // 4. DETALLE MATERIA SCREEN
 @Composable
-fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: () -> Unit) {
+fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: () -> Unit, onNavigateToTutor: (Int) -> Unit) {
     val subjects by viewModel.subjects.collectAsStateWithLifecycle()
     val subject = subjects.find { it.id == subjectId }
     val absences by viewModel.getAbsencesForSubject(subjectId).collectAsStateWithLifecycle(emptyList())
@@ -349,6 +349,29 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                     }
                 }
 
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    onClick = { onNavigateToTutor(subjectId) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = ProBlue.copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, ProBlue.copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "Tutor IA", tint = ProBlue, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Abrir Tutor IA para ${subject.name}",
+                            color = ProBlue,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // 2. Game-style Health Bar (Vidas de Faltas Restantes)
@@ -388,29 +411,11 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                     }
 
                     // Hearts Row
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (maxAbs <= 0) {
-                            Text("Alto riesgo al faltar", fontSize = 11.sp, color = Terracotta, fontWeight = FontWeight.Bold)
-                        } else {
-                            val displayMax = maxAbs.coerceAtMost(8)
-                            val displayRemaining = remaining.coerceAtLeast(0).coerceAtMost(displayMax)
-                            for (i in 1..displayMax) {
-                                val isHeld = i <= displayRemaining
-                                Icon(
-                                    imageVector = if (isHeld) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = null,
-                                    tint = if (isHeld) Terracotta else Color.LightGray,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                            if (maxAbs > 8) {
-                                Text("+${maxAbs - 8}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SlateGray)
-                            }
-                        }
-                    }
+                    SubjectLivesIndicator(
+                        subAbsCount = totalAbsCount,
+                        maxAbs = maxAbs,
+                        heartSize = 22.dp
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -525,8 +530,9 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                     }
                 }
 
+                Spacer(modifier = Modifier.height(12.dp))
+                }
                 Spacer(modifier = Modifier.height(16.dp))
-
                 // 4. Quick Standard Summary Metrics
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1239,7 +1245,6 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
             }
         }
     }
-}
 
 @Composable
 fun LegendItem(color: Color, label: String) {

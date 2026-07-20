@@ -320,16 +320,14 @@ fun HeroNextClassCard(
                         .padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = if (isAbsencesCritical) Icons.Default.Warning else Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = if (isAbsencesCritical) Terracotta else DarkGreen,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
                     Column {
                         Text("FALTAS RESTANTES", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = SlateGray)
-                        Text("$remainingAbsences de $maxAbs", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NavyBlue)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        SubjectLivesIndicator(
+                            subAbsCount = maxAbs - remainingAbsences,
+                            maxAbs = maxAbs,
+                            heartSize = 14.dp
+                        )
                     }
                 }
             }

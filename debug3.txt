@@ -1,0 +1,25 @@
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    onClick = { onNavigateToTutor(subjectId) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = ProBlue.copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, ProBlue.copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "Tutor IA", tint = ProBlue, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Abrir Tutor IA para ${subject.name}",
+                            color = ProBlue,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))

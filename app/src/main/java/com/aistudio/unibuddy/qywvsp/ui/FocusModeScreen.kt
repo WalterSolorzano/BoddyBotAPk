@@ -22,6 +22,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -161,9 +162,18 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
 
     val absences by viewModel.absences.collectAsStateWithLifecycle()
     val assessments by viewModel.assessments.collectAsStateWithLifecycle()
+    val currentWeek by viewModel.currentWeekOfSemester.collectAsStateWithLifecycle()
 
-    val stressLevel = remember(assessments, absences) {
-        (assessments.count { it.grade == null } * 15f + absences.size * 5f).coerceIn(0f, 100f)
+    // Determine the active Corte/Period (C1 if week <= 8, C2 if week > 8)
+    val currentPeriodAssessments = remember(assessments, currentWeek) {
+        assessments.filter {
+            val isC1 = it.name.contains("C1", ignoreCase = true) || it.name.contains("U1", ignoreCase = true)
+            if (currentWeek <= 8) isC1 else !isC1
+        }
+    }
+
+    val stressLevel = remember(currentPeriodAssessments, absences) {
+        (currentPeriodAssessments.count { it.grade == null } * 15f + absences.size * 5f).coerceIn(0f, 100f)
     }
     val stressStatus = remember(stressLevel) {
         when {
@@ -171,6 +181,16 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
             stressLevel > 40f -> "Elevado"
             else -> "Saludable"
         }
+    }
+
+    var animateChart by remember { mutableStateOf(false) }
+    val chartProgress by animateFloatAsState(
+        targetValue = if (animateChart) 1f else 0f,
+        animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
+        label = "chart_growth"
+    )
+    LaunchedEffect(Unit) {
+        animateChart = true
     }
 
     val objectives = remember(objectivesJson) { objectivesJson.parseObjectives() }
@@ -742,6 +762,188 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
             }
         }
 
+        // SPOTIFY INTEGRATION CARD
+        item {
+            val isSpotifyConnected by SpotifyState.isConnected.collectAsStateWithLifecycle()
+            val isSpotifyPlaying by SpotifyState.isPlaying.collectAsStateWithLifecycle()
+            val spotifyTrack by SpotifyState.currentTrack.collectAsStateWithLifecycle()
+            val spotifyArtist by SpotifyState.currentArtist.collectAsStateWithLifecycle()
+            val isSpotifyConnecting by SpotifyState.isConnecting.collectAsStateWithLifecycle()
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(4.dp, RoundedCornerShape(20.dp)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF121212)), // Spotify Dark
+                border = BorderStroke(1.dp, Color(0xFF282828))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .background(Color(0xFF1DB954), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = "Spotify",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Música de Enfoque (Spotify)",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontSize = 14.sp
+                            )
+                        }
+                        
+                        Text(
+                            text = if (isSpotifyConnected) "CONNECTED" else "CONNECT",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1DB954),
+                            modifier = Modifier
+                                .background(Color(0xFF1DB954).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                .clickable {
+                                    if (!isSpotifyConnected && !isSpotifyConnecting) {
+                                        SpotifyManager.connect(context)
+                                    } else if (isSpotifyConnected) {
+                                        SpotifyManager.disconnect()
+                                    }
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    if (isSpotifyConnecting) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(color = Color(0xFF1DB954), modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Conectando a Spotify...", color = Color(0xFFB3B3B3), fontSize = 12.sp)
+                        }
+                    } else if (isSpotifyConnected) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        // Mini Player
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = spotifyTrack ?: "Not Playing",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = spotifyArtist ?: "",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFB3B3B3)
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { SpotifyManager.skipPrevious() }) {
+                                    Icon(imageVector = Icons.Default.KeyboardArrowLeft, contentDescription = "Prev", tint = Color.White)
+                                }
+                                IconButton(onClick = { 
+                                    if (isSpotifyPlaying) SpotifyManager.pause() else SpotifyManager.resume() 
+                                }) {
+                                    Icon(
+                                        imageVector = if (isSpotifyPlaying) Icons.Default.Close else Icons.Default.PlayArrow,
+                                        contentDescription = "Play/Pause", 
+                                        tint = Color(0xFF1DB954),
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                IconButton(onClick = { SpotifyManager.skipNext() }) {
+                                    Icon(imageVector = Icons.Default.KeyboardArrowRight, contentDescription = "Next", tint = Color.White)
+                                }
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            text = "Conecta tu cuenta de Spotify para reproducir playlists directamente en la app.",
+                            color = Color(0xFFB3B3B3),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val playlists = listOf(
+                        Triple("Lofi Study Beats", "Relajantes ritmos e instrumental lofi retro.", "spotify:playlist:37i9dQZF1DWWQRwui0ExPn"),
+                        Triple("Deep Focus", "Sintetizadores ambientales y ondas de enfoque.", "spotify:playlist:37i9dQZF1DWY4S6v7IdC7V"),
+                        Triple("Estudio Clásico", "Guitarra clásica y piano suave inspirador.", "spotify:playlist:37i9dQZF1DX8NTLI6993gR")
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        playlists.forEach { (title, desc, playlistUri) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF1E1E1E), RoundedCornerShape(12.dp))
+                                    .border(1.dp, Color(0xFF2E2E2E), RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        if (isSpotifyConnected) {
+                                            SpotifyManager.play(playlistUri)
+                                        } else {
+                                            // Fallback
+                                            try {
+                                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                                    data = android.net.Uri.parse(playlistUri)
+                                                    putExtra(android.content.Intent.EXTRA_REFERRER, android.net.Uri.parse("android-app://" + context.packageName))
+                                                }
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {
+                                                val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://open.spotify.com/playlist/" + playlistUri.split(":").last()))
+                                                context.startActivity(webIntent)
+                                            }
+                                        }
+                                    }
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = title,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = desc,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF9F9F9F)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = "Reproducir",
+                                    tint = Color(0xFF1DB954),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 4. STUDY OBJECTIVES / MICRO-TASKS
         item {
             Card(
@@ -950,7 +1152,7 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // HISTORIC CHART (BAR CHART ON CANVAS)
+                    // HISTORIC CHART (BAR CHART ON CANVAS WITH AXIS & ANIMATION)
                     Text(
                         text = "Curva de Enfoque Semanal",
                         fontSize = 11.sp,
@@ -962,31 +1164,28 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(120.dp)
-                            .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
-                            .padding(8.dp)
+                            .height(130.dp)
+                            .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             val w = size.width
                             val h = size.height
 
-                            val paddingLeft = 30f
+                            val paddingLeft = 70f
                             val paddingRight = 30f
-                            val paddingTop = 10f
-                            val paddingBottom = 20f
+                            val paddingTop = 25f
+                            val paddingBottom = 40f
 
                             val chartWidth = w - paddingLeft - paddingRight
                             val chartHeight = h - paddingTop - paddingBottom
 
-                            // Days of week list
                             val daysOfWeek = listOf("Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do")
                             
-                            // Map days focused minutes
-                            // Simulated dynamic daily data derived from historical sessions safely
                             val daysMap = mutableMapOf<String, Int>()
                             daysOfWeek.forEach { daysMap[it] = 0 }
                             
-                            // Seed some default visual bars if history is empty to maintain elegant UI
                             if (sessionsHistory.isEmpty()) {
                                 daysMap["Lu"] = 25
                                 daysMap["Mi"] = 50
@@ -1000,30 +1199,111 @@ fun FocusModeScreen(viewModel: UniBuddyViewModel) {
 
                             val maxVal = (daysMap.values.maxOrNull() ?: 25).coerceAtLeast(25).toFloat()
                             val numBars = daysOfWeek.size
-                            val barWidth = (chartWidth / numBars) * 0.6f
+                            val barWidth = (chartWidth / numBars) * 0.55f
                             val stepX = chartWidth / numBars
 
-                            // Draw reference grid dashed line
+                            // 1. Draw dashed reference lines & Y-axis labels
+                            val paintY = android.graphics.Paint().apply {
+                                color = android.graphics.Color.parseColor("#94A3B8") // Slate 400
+                                textSize = 20f
+                                textAlign = android.graphics.Paint.Align.RIGHT
+                                isAntiAlias = true
+                            }
+
+                            val dashEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
+
+                            // Middle reference line
                             drawLine(
-                                color = Color.LightGray.copy(alpha = 0.4f),
+                                color = Color(0xFFCBD5E1).copy(alpha = 0.5f),
                                 start = Offset(paddingLeft, paddingTop + chartHeight / 2f),
                                 end = Offset(w - paddingRight, paddingTop + chartHeight / 2f),
                                 strokeWidth = 2f,
-                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                pathEffect = dashEffect
                             )
+                            drawContext.canvas.nativeCanvas.drawText(
+                                "${(maxVal / 2).toInt()}m",
+                                paddingLeft - 12f,
+                                paddingTop + chartHeight / 2f + 7f,
+                                paintY
+                            )
+
+                            // Top reference line
+                            drawLine(
+                                color = Color(0xFFCBD5E1).copy(alpha = 0.5f),
+                                start = Offset(paddingLeft, paddingTop),
+                                end = Offset(w - paddingRight, paddingTop),
+                                strokeWidth = 1.5f
+                            )
+                            drawContext.canvas.nativeCanvas.drawText(
+                                "${maxVal.toInt()}m",
+                                paddingLeft - 12f,
+                                paddingTop + 7f,
+                                paintY
+                            )
+
+                            // Bottom reference line
+                            drawLine(
+                                color = Color(0xFF94A3B8).copy(alpha = 0.3f),
+                                start = Offset(paddingLeft, h - paddingBottom),
+                                end = Offset(w - paddingRight, h - paddingBottom),
+                                strokeWidth = 2f
+                            )
+                            drawContext.canvas.nativeCanvas.drawText(
+                                "0m",
+                                paddingLeft - 12f,
+                                h - paddingBottom + 7f,
+                                paintY
+                            )
+
+                            // 2. Draw bars & day labels
+                            val paintX = android.graphics.Paint().apply {
+                                color = android.graphics.Color.parseColor("#475569") // Slate 600
+                                textSize = 22f
+                                textAlign = android.graphics.Paint.Align.CENTER
+                                isAntiAlias = true
+                                typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
+                            }
+
+                            val paintVal = android.graphics.Paint().apply {
+                                color = android.graphics.Color.parseColor("#1E3A8A") // Navy Blue
+                                textSize = 18f
+                                textAlign = android.graphics.Paint.Align.CENTER
+                                isAntiAlias = true
+                                typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
+                            }
 
                             daysOfWeek.forEachIndexed { idx, day ->
                                 val minsValue = daysMap[day] ?: 0
-                                val barHeight = (minsValue.toFloat() / maxVal) * chartHeight
+                                // Animate the bar height dynamically!
+                                val barHeight = (minsValue.toFloat() / maxVal) * chartHeight * chartProgress
                                 val barX = paddingLeft + (idx * stepX) + (stepX - barWidth) / 2f
                                 val barY = h - paddingBottom - barHeight
 
                                 // Draw single vertical rounded study bar
-                                drawRect(
-                                    color = if (minsValue > 0) ProBlue else Color.LightGray.copy(alpha = 0.4f),
+                                drawRoundRect(
+                                    color = if (minsValue > 0) ProBlue else Color(0xFFE2E8F0),
                                     topLeft = Offset(barX, barY),
-                                    size = Size(barWidth, barHeight)
+                                    size = Size(barWidth, barHeight.coerceAtLeast(2f)),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f)
                                 )
+
+                                // Draw day label below bar
+                                drawContext.canvas.nativeCanvas.drawText(
+                                    day,
+                                    barX + barWidth / 2f,
+                                    h - paddingBottom + 28f,
+                                    paintX
+                                )
+
+                                // Draw numeric value on top of bar (if studied)
+                                if (minsValue > 0 && chartProgress > 0.8f) {
+                                    drawContext.canvas.nativeCanvas.drawText(
+                                        "${minsValue}m",
+                                        barX + barWidth / 2f,
+                                        barY - 6f,
+                                        paintVal
+                                    )
+                                }
                             }
                         }
                     }

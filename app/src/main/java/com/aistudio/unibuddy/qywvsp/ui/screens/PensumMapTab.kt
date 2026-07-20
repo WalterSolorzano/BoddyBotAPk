@@ -36,11 +36,14 @@ enum class NodeState {
     PASSED_FIRST, PASSED_RECOVERY, ONGOING, LOCKED, NO_DATA
 }
 
-fun determineNodeState(subjectCode: String, subjectName: String, history: List<AcademicRecordWithSubject>, staticPensum: List<StaticPensumSubject>, ongoingSubjects: List<String>): NodeState {
+fun determineNodeState(subjectCode: String, subjectName: String, history: List<AcademicRecordWithSubject>, staticPensum: List<StaticPensumSubject>, ongoingSubjects: List<String>, passingGrade: Double): NodeState {
 
-    val records = history.filter { it.subjectName == subjectCode || it.subjectName.equals(subjectName, ignoreCase = true) }
+    val records = history.filter { 
+        it.subjectCode.equals(subjectCode, ignoreCase = true) || 
+        it.subjectName.equals(subjectName, ignoreCase = true) 
+    }
     
-    val passedRecords = records.filter { it.record.grade >= 60.0 }
+    val passedRecords = records.filter { it.record.grade >= passingGrade }
     if (passedRecords.isNotEmpty()) {
         val anyFirst = passedRecords.any { it.record.status == AssessmentStatus.NF_R }
         return if (anyFirst) NodeState.PASSED_FIRST else NodeState.PASSED_RECOVERY
@@ -57,8 +60,11 @@ fun determineNodeState(subjectCode: String, subjectName: String, history: List<A
     val prereqsPassed = prereqs.all { prereqCode ->
         val prereqSubject = staticPensum.find { it.code == prereqCode }
         val prereqName = prereqSubject?.name ?: ""
-        val pRecords = history.filter { it.subjectName == prereqCode || it.subjectName.equals(prereqName, ignoreCase = true) }
-        pRecords.any { it.record.grade >= 60.0 }
+        val pRecords = history.filter { 
+            it.subjectCode.equals(prereqCode, ignoreCase = true) || 
+            it.subjectName.equals(prereqName, ignoreCase = true) 
+        }
+        pRecords.any { it.record.grade >= passingGrade }
     }
     
     return if (prereqsPassed) NodeState.NO_DATA else NodeState.LOCKED
@@ -67,9 +73,28 @@ fun determineNodeState(subjectCode: String, subjectName: String, history: List<A
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PensumMapTab(staticPensum: List<StaticPensumSubject>, history: List<AcademicRecordWithSubject>, professors: List<Professor>, ongoingSubjects: List<String>) {
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+fun PensumMapTab(
+    staticPensum: List<StaticPensumSubject>, 
+    history: List<AcademicRecordWithSubject>, 
+    professors: List<Professor>, 
+    ongoingSubjects: List<String>,
+    passingGrade: Double = 60.0
+) {
+    val currentSem = remember(staticPensum, history) {
+        val passedCodes = history.filter { it.record.grade >= passingGrade }.map { it.subjectCode }.toSet()
+        val passedNames = history.filter { it.record.grade >= passingGrade }.map { it.subjectName.uppercase() }.toSet()
+        val unpassedSemesters = staticPensum.filter { 
+            it.code !in passedCodes && it.name.uppercase() !in passedNames 
+        }.map { it.semester }
+        unpassedSemesters.minOrNull() ?: 1
+    }
+
+    val initialX = remember(currentSem) {
+        -((currentSem - 1) * 180 * 2.5f)
+    }
+
+    var scale by remember { mutableFloatStateOf(0.65f) }
+    var offset by remember { mutableStateOf(Offset(initialX.toFloat().coerceIn(-2500f, 0f), 150f)) }
     var selectedSubject by remember { mutableStateOf<StaticPensumSubject?>(null) }
     
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -105,12 +130,12 @@ fun PensumMapTab(staticPensum: List<StaticPensumSubject>, history: List<Academic
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(0.4f, 2.0f)
+                    scale = (scale * zoom).coerceIn(0.3f, 2.0f)
                     val newOffset = offset + pan
-                    // Limit panning to prevent scrolling infinitely into blank space
+                    // Limit panning to prevent scrolling infinitely into blank space (generous limits)
                     offset = Offset(
-                        x = newOffset.x.coerceIn(-1200f, 600f),
-                        y = newOffset.y.coerceIn(-800f, 400f)
+                        x = newOffset.x.coerceIn(-5000f, 5000f),
+                        y = newOffset.y.coerceIn(-3000f, 3000f)
                     )
                 }
             }
@@ -143,7 +168,7 @@ fun PensumMapTab(staticPensum: List<StaticPensumSubject>, history: List<Academic
                         val fromX = fromIndices.first * (wPx + gxPx)
                         val fromY = fromIndices.second * (hPx + gyPx)
                         
-                        val prereqState = determineNodeState(prereqCode, staticPensum.find { it.code == prereqCode }?.name ?: "", history, staticPensum, ongoingSubjects)
+                        val prereqState = determineNodeState(prereqCode, staticPensum.find { it.code == prereqCode }?.name ?: "", history, staticPensum, ongoingSubjects, passingGrade)
                         val isPassed = prereqState == NodeState.PASSED_FIRST || prereqState == NodeState.PASSED_RECOVERY
                         
                         val path = Path().apply {
@@ -166,7 +191,7 @@ fun PensumMapTab(staticPensum: List<StaticPensumSubject>, history: List<Academic
             // Nodes layer
             staticPensum.forEach { subject ->
                 val indices = positions[subject.code] ?: return@forEach
-                val state = determineNodeState(subject.code, subject.name, history, staticPensum, ongoingSubjects)
+                val state = determineNodeState(subject.code, subject.name, history, staticPensum, ongoingSubjects, passingGrade)
                 
                 val bgColor = when (state) {
                     NodeState.PASSED_FIRST -> Color(0xFF4CAF50)

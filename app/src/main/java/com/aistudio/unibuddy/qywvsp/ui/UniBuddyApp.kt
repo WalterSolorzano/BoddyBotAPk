@@ -136,6 +136,8 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object FocusMode : Screen("focus_mode", "Focus", Icons.Rounded.SportsEsports)
     object Asistencia : Screen("asistencia", "Asistencia", Icons.Rounded.LocalFireDepartment)
     object Notas : Screen("notas", "Notas", Icons.Rounded.EmojiEvents)
+    object Tutor : Screen("tutor", "Tutor IA", Icons.Rounded.School)
+    object StudyPlan : Screen("study_plan", "Planificador", Icons.Default.AutoAwesome)
     object Config_Tab : Screen("configuracion_tab", "Mochila", Icons.Rounded.Backpack)
     object Pensum : Screen("pensum", "Progreso", Icons.Default.DateRange)
     object Stats : Screen("stats", "Estadísticas", Icons.Rounded.BarChart)
@@ -159,6 +161,7 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
     var selectedSubjectIdForDetails by remember { mutableStateOf<Int?>(null) }
     // Auxiliary state to view assessment list for a subject (Notas)
     var selectedSubjectIdForGrades by remember { mutableStateOf<Int?>(null) }
+    var selectedSubjectIdForTutor by remember { mutableStateOf<Int?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
@@ -298,7 +301,26 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
                             },
                             onNavigateToPensum = {
                                 currentScreen = Screen.Pensum
+                            },
+                            onNavigateToStudyPlan = { currentScreen = Screen.StudyPlan },
+                            onNavigateToTutor = {
+                                currentScreen = Screen.Tutor
                             }
+                        )
+                    }
+                    Screen.Tutor -> {
+                        TutorScreen(
+                            subjectId = selectedSubjectIdForTutor,
+                            viewModel = viewModel,
+                            onBack = {
+                                currentScreen = if (selectedSubjectIdForTutor != null) Screen.Asistencia else Screen.Inicio
+                            }
+                        )
+                    }
+                    Screen.StudyPlan -> {
+                        StudyPlanScreen(
+                            viewModel = viewModel,
+                            onBack = { currentScreen = Screen.Inicio }
                         )
                     }
                     Screen.Asistencia -> {
@@ -328,7 +350,11 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
                                 SubjectDetailsScreen(
                                     viewModel = viewModel,
                                     subjectId = subjectId,
-                                    onBack = { selectedSubjectIdForDetails = null }
+                                    onBack = { selectedSubjectIdForDetails = null },
+                            onNavigateToTutor = { id ->
+                                        selectedSubjectIdForTutor = id
+                                        currentScreen = Screen.Tutor
+                                    }
                                 )
                             }
                         }
@@ -368,7 +394,9 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
                     Screen.Config_Tab -> {
                         SettingsScreen(
                             viewModel = viewModel,
-                            onNavigateToPensum = { currentScreen = Screen.Pensum }
+                            onNavigateToPensum = {
+                                currentScreen = Screen.Pensum
+                            }
                         )
                     }
                     Screen.Stats -> {
@@ -540,30 +568,22 @@ fun SubjectGridItem(
                         fontWeight = FontWeight.SemiBold
                     )
                 }
+                Spacer(modifier = Modifier.height(8.dp))
+                SubjectLivesIndicator(subAbsCount = subAbsCount, maxAbs = maxAbs)
             }
             
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(54.dp)) {
-                androidx.compose.material3.CircularProgressIndicator(
-                    progress = { 1f },
-                    modifier = Modifier.fillMaxSize(),
-                    color = Color.LightGray.copy(alpha = 0.3f),
-                    strokeWidth = 6.dp
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "$subAbsCount/$maxAbs",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = statusColor
                 )
-                androidx.compose.material3.CircularProgressIndicator(
-                    progress = { fractionUsed.coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxSize(),
-                    color = statusColor,
-                    strokeWidth = 6.dp
+                Text(
+                    text = "faltas",
+                    fontSize = 9.sp,
+                    color = com.aistudio.unibuddy.qywvsp.ui.theme.SlateGray
                 )
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "$subAbsCount",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = statusColor
-                    )
-                    Text("faltas", fontSize = 8.sp, color = com.aistudio.unibuddy.qywvsp.ui.theme.SlateGray)
-                }
             }
         }
     }

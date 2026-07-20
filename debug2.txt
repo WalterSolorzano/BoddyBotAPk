@@ -1,0 +1,25 @@
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = bubbleText,
+                            fontSize = 12.sp,
+                            color = NavyBlue,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    onClick = { onNavigateToTutor(subjectId) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = ProBlue.copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, ProBlue.copy(alpha = 0.3f))
+                ) {
+                    Row(
