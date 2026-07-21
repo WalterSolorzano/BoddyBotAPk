@@ -304,7 +304,7 @@ fun EditRecordProfessorDialog(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     (1..5).forEach { star ->
                         IconButton(onClick = { rating = star }) {
-                            Icon(if (rating >= star) Icons.Filled.Star else androidx.compose.material.icons.Icons.Outlined.StarBorder, contentDescription = "Star", tint = Amber)
+                            Icon(Icons.Filled.Star, contentDescription = "Star", tint = if (rating >= star) Amber else Color(0xFFE2E8F0))
                         }
                     }
                 }
