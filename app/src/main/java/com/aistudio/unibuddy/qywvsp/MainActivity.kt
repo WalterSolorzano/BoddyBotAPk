@@ -29,6 +29,7 @@ import android.content.Context
 class MainActivity : ComponentActivity() {
     private var locationManager: LocationManager? = null
     private var locationListener: LocationListener? = null
+    private var isLocationUpdatesRegistered = false
     private val viewModel: UniBuddyViewModel by viewModels {
         UniBuddyViewModelFactory(application)
     }
@@ -122,30 +123,48 @@ class MainActivity : ComponentActivity() {
         locationListener = listener
         
         try {
-            val gpsEnabled = hasFineLocation && locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true
-            val networkEnabled = locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true
+            // Seleccionar el único mejor proveedor de ubicación disponible:
+            // 1. "fused" (si está soportado/habilitado en Android 12+)
+            // 2. "network" (si está habilitado)
+            // 3. "gps" (si está habilitado y tenemos ACCESS_FINE_LOCATION)
+            val provider = when {
+                locationManager?.allProviders?.contains("fused") == true && locationManager?.isProviderEnabled("fused") == true -> "fused"
+                locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true -> LocationManager.NETWORK_PROVIDER
+                hasFineLocation && locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true -> LocationManager.GPS_PROVIDER
+                else -> null
+            }
             
-            if (gpsEnabled) {
+            if (provider != null) {
                 locationManager?.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER,
+                    provider,
                     10000L, // 10 seconds
                     10f,    // 10 meters
                     listener
                 )
-            }
-            if (networkEnabled) {
-                locationManager?.requestLocationUpdates(
-                    LocationManager.NETWORK_PROVIDER,
-                    10000L, // 10 seconds
-                    10f,    // 10 meters
-                    listener
-                )
+                isLocationUpdatesRegistered = true
+                android.util.Log.d("UniBuddy", "Actualizaciones de ubicación iniciadas usando el proveedor: $provider")
+            } else {
+                android.util.Log.w("UniBuddy", "No hay proveedores de ubicación disponibles o habilitados.")
             }
             
-            // Get immediate value from last known location to populate ui fast
-            val lastGps = if (gpsEnabled) locationManager?.getLastKnownLocation(LocationManager.GPS_PROVIDER) else null
-            val lastNetwork = if (networkEnabled) locationManager?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) else null
-            val bestLocation = lastGps ?: lastNetwork
+            // Obtener el valor inmediato de la última ubicación conocida para poblar la UI rápido
+            val lastGps = if (hasFineLocation && locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true) {
+                locationManager?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            } else {
+                null
+            }
+            val lastNetwork = if (locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true) {
+                locationManager?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            } else {
+                null
+            }
+            val lastFused = if (locationManager?.allProviders?.contains("fused") == true && locationManager?.isProviderEnabled("fused") == true) {
+                locationManager?.getLastKnownLocation("fused")
+            } else {
+                null
+            }
+            
+            val bestLocation = lastFused ?: lastNetwork ?: lastGps
             
             if (bestLocation != null) {
                 viewModel.updateLocationStatus(
@@ -155,8 +174,7 @@ class MainActivity : ComponentActivity() {
                     lon = bestLocation.longitude
                 )
             } else {
-                // If there's no last known location, trigger onLocationChanged manually with a realistic default coordinate matching the college coords (near Managua, Nicaragua) 
-                // so the app's location-based features work seamlessly on virtual/headless emulators right away.
+                // Si no hay última ubicación conocida, disparamos manualmente la ubicación con coordenadas del campus de la universidad para que funcione en emuladores virtuales
                 viewModel.updateLocationStatus(
                     available = true,
                     name = "Ubicación Campus",
@@ -173,10 +191,13 @@ class MainActivity : ComponentActivity() {
 
     private fun stopLocationUpdates() {
         locationListener?.let { listener ->
-            try {
-                locationManager?.removeUpdates(listener)
-            } catch (e: Exception) {
-                android.util.Log.e("UniBuddy", "Error al detener actualizaciones de ubicación: ${e.message}")
+            if (isLocationUpdatesRegistered) {
+                try {
+                    locationManager?.removeUpdates(listener)
+                } catch (e: Exception) {
+                    android.util.Log.e("UniBuddy", "Error al detener actualizaciones de ubicación: ${e.message}")
+                }
+                isLocationUpdatesRegistered = false
             }
             locationListener = null
         }
