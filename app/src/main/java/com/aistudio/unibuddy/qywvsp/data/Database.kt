@@ -220,7 +220,10 @@ data class AttendanceLog(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val subjectId: Int,
     val date: String, // e.g., "12 Oct"
-    val isPresent: Boolean // true = Presente, false = Ausente/Falta
+    val isPresent: Boolean, // true = Presente, false = Ausente/Falta
+    val isCancelled: Boolean = false, // true = Clase cancelada
+    val isLate: Boolean = false,
+    val arrivalTime: String? = null
 )
 
 @Entity(tableName = "season_recaps")
@@ -278,6 +281,35 @@ data class Task(
     val isCompleted: Boolean = false
 )
 
+@Entity(
+    tableName = "checklist_items",
+    foreignKeys = [
+        ForeignKey(
+            entity = Subject::class,
+            parentColumns = ["id"],
+            childColumns = ["subjectId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("subjectId")]
+)
+data class ChecklistItem(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val subjectId: Int,
+    val itemName: String,
+    val date: String? = null, // null for recurring, or exact date (e.g., "17 Aug") for exception
+    val isCompleted: Boolean = false
+)
+
+@Entity(tableName = "bug_reports")
+data class BugReport(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val description: String,
+    val screenshotUri: String? = null,
+    val screenName: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 // DAOs
 @Dao
 interface TaskDao {
@@ -295,6 +327,36 @@ interface TaskDao {
 
     @Query("DELETE FROM tasks WHERE id = :id")
     suspend fun deleteTaskById(id: Int)
+}
+
+@Dao
+interface ChecklistItemDao {
+    @Query("SELECT * FROM checklist_items ORDER BY id ASC")
+    fun getAllChecklistItems(): Flow<List<ChecklistItem>>
+
+    @Query("SELECT * FROM checklist_items WHERE subjectId = :subjectId ORDER BY id ASC")
+    fun getChecklistItemsForSubject(subjectId: Int): Flow<List<ChecklistItem>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChecklistItem(item: ChecklistItem): Long
+
+    @Update
+    suspend fun updateChecklistItem(item: ChecklistItem)
+
+    @Query("DELETE FROM checklist_items WHERE id = :id")
+    suspend fun deleteChecklistItemById(id: Int)
+}
+
+@Dao
+interface BugReportDao {
+    @Query("SELECT * FROM bug_reports ORDER BY timestamp DESC")
+    fun getAllBugReports(): Flow<List<BugReport>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBugReport(report: BugReport): Long
+
+    @Query("DELETE FROM bug_reports WHERE id = :id")
+    suspend fun deleteBugReportById(id: Int)
 }
 @Dao
 interface BadgeDao {
@@ -350,6 +412,11 @@ interface AcademicRecordDao {
 
     @Query("SELECT * FROM academic_records")
     fun getAllRecords(): Flow<List<AcademicRecord>>
+    @Update
+    suspend fun updateAcademicRecord(record: AcademicRecord)
+
+    @Query("SELECT * FROM academic_records WHERE id = :id")
+    suspend fun getAcademicRecordById(id: Int): AcademicRecord?
 
     @Query("""
         SELECT ar.*, ps.name as name, ps.code as code, 
@@ -496,9 +563,11 @@ class Converters {
         PensumSubject::class,
         AcademicRecord::class,
         Task::class,
-        SeasonRecap::class
+        SeasonRecap::class,
+        ChecklistItem::class,
+        BugReport::class
     ],
-    version = 15,
+    version = 17,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -516,6 +585,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun badgeDao(): BadgeDao
     abstract fun taskDao(): TaskDao
     abstract fun seasonRecapDao(): SeasonRecapDao
+    abstract fun checklistItemDao(): ChecklistItemDao
+    abstract fun bugReportDao(): BugReportDao
 
     companion object {
         @Volatile
@@ -636,6 +707,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `attendance_logs` ADD COLUMN `isCancelled` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_16_17 = object : androidx.room.migration.Migration(16, 17) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `attendance_logs` ADD COLUMN `isLate` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `attendance_logs` ADD COLUMN `arrivalTime` TEXT DEFAULT NULL")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `checklist_items` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `subjectId` INTEGER NOT NULL, `itemName` TEXT NOT NULL, `date` TEXT, `isCompleted` INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(`subjectId`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_checklist_items_subjectId` ON `checklist_items` (`subjectId`)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `bug_reports` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `description` TEXT NOT NULL, `screenshotUri` TEXT, `screenName` TEXT NOT NULL, `timestamp` INTEGER NOT NULL)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -647,7 +734,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, 
                     MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, 
                     MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, 
-                    MIGRATION_13_14, MIGRATION_14_15
+                    MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17
                 )
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .build()
@@ -723,6 +810,16 @@ class UniBuddyRepository(val db: AppDatabase) {
     fun getAllProfessors(): kotlinx.coroutines.flow.Flow<List<Professor>> = db.professorDao().getAllProfessors()
     
     val fullAcademicHistory = db.academicRecordDao().getFullAcademicHistory()
+
+    val checklistItems: Flow<List<ChecklistItem>> = db.checklistItemDao().getAllChecklistItems()
+    fun getChecklistItemsForSubject(subjectId: Int): Flow<List<ChecklistItem>> = db.checklistItemDao().getChecklistItemsForSubject(subjectId)
+    suspend fun insertChecklistItem(item: ChecklistItem): Long = db.checklistItemDao().insertChecklistItem(item)
+    suspend fun updateChecklistItem(item: ChecklistItem) = db.checklistItemDao().updateChecklistItem(item)
+    suspend fun deleteChecklistItemById(id: Int) = db.checklistItemDao().deleteChecklistItemById(id)
+
+    val bugReports: Flow<List<BugReport>> = db.bugReportDao().getAllBugReports()
+    suspend fun insertBugReport(report: BugReport): Long = db.bugReportDao().insertBugReport(report)
+    suspend fun deleteBugReportById(id: Int) = db.bugReportDao().deleteBugReportById(id)
 }
 
 @Dao

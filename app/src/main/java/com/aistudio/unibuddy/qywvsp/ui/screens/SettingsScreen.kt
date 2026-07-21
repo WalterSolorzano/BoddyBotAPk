@@ -51,79 +51,30 @@ import java.util.Locale
 import java.util.Calendar
 
 @Composable
-fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit) {
+fun SettingsScreen(
+    viewModel: UniBuddyViewModel,
+    onNavigateToProfile: () -> Unit,
+    onNavigateToCareer: () -> Unit,
+    onNavigateToRoutes: () -> Unit,
+    onNavigateToSystem: () -> Unit,
+    onNavigateToTutorial: () -> Unit
+) {
     var isLoading by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(350)
         isLoading = false
     }
-
     if (isLoading) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(BackgroundBone),
+            modifier = Modifier.fillMaxSize().background(BackgroundBone),
             contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(color = ProBlue)
-        }
+        ) { CircularProgressIndicator(color = ProBlue) }
         return
     }
 
     val username by viewModel.username.collectAsStateWithLifecycle()
     val buddyColorStr by viewModel.buddyColor.collectAsStateWithLifecycle()
     val mainBuddyColor = Color(android.graphics.Color.parseColor(buddyColorStr))
-    
-    var showProfileDialog by remember { mutableStateOf(false) }
-    var showRouteDialog by remember { mutableStateOf(false) }
-    
-    val routeSettingsRequested by viewModel.showRouteSettingsRequested.collectAsStateWithLifecycle()
-    LaunchedEffect(routeSettingsRequested) {
-        if (routeSettingsRequested) {
-            showRouteDialog = true
-            viewModel.requestRouteSettings(false) // consume the request event
-        }
-    }
-    
-    var showBadgeDialog by remember { mutableStateOf(false) }
-    var showResetDialog by remember { mutableStateOf(false) }
-    var showBuddyDialog by remember { mutableStateOf(false) }
-    var showHistoryDialog by remember { mutableStateOf(false) }
-    var showPdfImportDialog by remember { mutableStateOf(false) }
-    var showErrorDialog by remember { mutableStateOf(false) }
-    var showSemesterDialog by remember { mutableStateOf(false) }
-
-    if (showHistoryDialog) {
-        androidx.compose.ui.window.Dialog(
-            onDismissRequest = { showHistoryDialog = false },
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Surface(modifier = Modifier.fillMaxSize(), color = BackgroundBone) {
-                Column {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White)
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { showHistoryDialog = false }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Historial de Semestres", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = NavyBlue)
-                    }
-                    Box(modifier = Modifier.weight(1f).padding(16.dp)) {
-                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                            SemesterHistoryView(viewModel = viewModel)
-                            Spacer(modifier = Modifier.height(24.dp))
-                            FocusHistoryChart(viewModel = viewModel)
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -142,23 +93,17 @@ fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit)
             Spacer(modifier = Modifier.width(16.dp))
             Column {
                 Text(text = "Hola, $username", style = MaterialTheme.typography.headlineMedium, color = NavyBlue, fontWeight = FontWeight.Bold)
-                Text(text = "Personaliza tu experiencia", style = MaterialTheme.typography.bodyMedium, color = SlateGray)
+                Text(text = "Tu Mochila Académica", style = MaterialTheme.typography.bodyMedium, color = SlateGray)
             }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Grid Layout for Settings
         val gridItems = listOf(
-            ConfigGridItem("Perfil", Icons.Rounded.Face, "Nombre, Foto, Carrera") { showProfileDialog = true },
-            ConfigGridItem("Mascota", Icons.Rounded.SmartToy, "Accesorios y Color") { showBuddyDialog = true },
-            ConfigGridItem("Rutas", Icons.Rounded.Explore, "Origen, Destino, GPS") { showRouteDialog = true },
-            ConfigGridItem("Historial", Icons.Rounded.QueryStats, "Estadísticas pasadas") { showHistoryDialog = true },
-            ConfigGridItem("Pensum", Icons.Rounded.MenuBook, "Progreso de Carrera") { onNavigateToPensum() },
-            ConfigGridItem("Semestre", Icons.Rounded.CalendarMonth, "Inicio, Notas, Feriados") { showSemesterDialog = true },
-            ConfigGridItem("Importar PDF", Icons.Rounded.DriveFolderUpload, "Historial de Notas") { showPdfImportDialog = true },
-            ConfigGridItem("Insignias", Icons.Rounded.EmojiEvents, "Logros y Medallas") { showBadgeDialog = true },
-            ConfigGridItem("Sistema", Icons.Rounded.Build, "Backup, Reset, Reportes") { showResetDialog = true }
+            ConfigGridItem("Perfil y Personalización", Icons.Rounded.Face, "Nombre, Foto, Mascota") { onNavigateToProfile() },
+            ConfigGridItem("Mi Carrera", Icons.Rounded.School, "Pensum, Historial, Semestre") { onNavigateToCareer() },
+            ConfigGridItem("Rutas", Icons.Rounded.Explore, "Origen, Destino, Tiempos") { onNavigateToRoutes() },
+            ConfigGridItem("Sistema", Icons.Rounded.Settings, "Backup, PDF, Reportes") { onNavigateToSystem() }
         )
 
         LazyVerticalGrid(
@@ -191,38 +136,24 @@ fun SettingsScreen(viewModel: UniBuddyViewModel, onNavigateToPensum: () -> Unit)
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = item.title, fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 16.sp)
+                        Text(text = item.title, fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 14.sp, textAlign = TextAlign.Center)
                         Text(text = item.subtitle, fontSize = 10.sp, color = SlateGray, textAlign = TextAlign.Center)
                     }
                 }
             }
         }
-    }
 
-    if (showProfileDialog) {
-        ProfileDialog(viewModel) { showProfileDialog = false }
-    }
-    if (showRouteDialog) {
-        RouteSettingsDialog(viewModel) { showRouteDialog = false }
-    }
-    if (showBadgeDialog) {
-        BadgeDialog(viewModel) { showBadgeDialog = false }
-    }
-    if (showResetDialog) {
-        SystemSettingsDialog(viewModel, onReportError = { showErrorDialog = true }) { showResetDialog = false }
-    }
-    if (showSemesterDialog) {
-        SemesterSettingsDialog(viewModel) { showSemesterDialog = false }
-    }
-    if (showBuddyDialog) {
-        BuddyCustomizationDialog(viewModel) { showBuddyDialog = false }
-    }
-    if (showPdfImportDialog) {
-        PdfImportDialog(viewModel) { showPdfImportDialog = false }
-    }
-
-    if (showErrorDialog) {
-        ErrorReportDialog(viewModel = viewModel) { showErrorDialog = false }
+        OutlinedButton(
+            onClick = { onNavigateToTutorial() },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = NavyBlue),
+            border = BorderStroke(1.dp, NavyBlue.copy(alpha = 0.5f)),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Ver tutorial de nuevo", fontWeight = FontWeight.Bold)
+        }
     }
 }
 
@@ -655,6 +586,192 @@ fun SystemSettingsDialog(viewModel: UniBuddyViewModel, onReportError: () -> Unit
 
                 // 2. Backup & Restore Configuration
                 Text("Respaldo y Restauración", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = NavyBlue)
+                
+                // Google Drive Backup Section
+                val googleAccessToken by viewModel.googleAccessToken.collectAsState()
+                val googleUserEmail by viewModel.googleUserEmail.collectAsState()
+                val googleUserName by viewModel.googleUserName.collectAsState()
+                val googleAutoBackupEnabled by viewModel.googleAutoBackupEnabled.collectAsState()
+                val isGoogleBackupInProgress by viewModel.isGoogleBackupInProgress.collectAsState()
+                val googleBackupStatus by viewModel.googleBackupStatus.collectAsState()
+                var showGoogleLogin by remember { mutableStateOf(false) }
+                var showAdvancedGoogleSettings by remember { mutableStateOf(false) }
+                var tempClientId by remember { mutableStateOf(com.aistudio.unibuddy.qywvsp.ui.screens.GoogleDriveBackupManager.customClientId) }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "Respaldo en Google Drive (Nube)",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = NavyBlue
+                            )
+                            if (googleAccessToken != null) {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        "Conectado",
+                                        color = Color(0xFF2E7D32),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            } else {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFECEFF1)),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        "No conectado",
+                                        color = SlateGray,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        if (googleAccessToken == null) {
+                            Text(
+                                "Guarda tu historial, notas y asistencia en Google Drive automáticamente para no perder tu cuenta.",
+                                fontSize = 11.sp,
+                                color = SlateGray
+                            )
+                            Button(
+                                onClick = { showGoogleLogin = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = NavyBlue),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Conectar Google Drive", fontSize = 12.sp)
+                            }
+
+                            // Advanced OAuth Settings Expandable
+                            TextButton(
+                                onClick = { showAdvancedGoogleSettings = !showAdvancedGoogleSettings },
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Text(
+                                    if (showAdvancedGoogleSettings) "Ocultar ajustes avanzados" else "Ajustes de OAuth avanzados",
+                                    fontSize = 10.sp,
+                                    color = SlateGray
+                                )
+                            }
+                            if (showAdvancedGoogleSettings) {
+                                OutlinedTextField(
+                                    value = tempClientId,
+                                    onValueChange = {
+                                        tempClientId = it
+                                        com.aistudio.unibuddy.qywvsp.ui.screens.GoogleDriveBackupManager.customClientId = it
+                                    },
+                                    label = { Text("Client ID de Google Web OAuth", fontSize = 10.sp) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp)
+                                )
+                            }
+                        } else {
+                            val displayName = googleUserName ?: googleUserEmail ?: "Usuario de Google"
+                            Text(
+                                "Cuenta: $displayName",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NavyBlue
+                            )
+
+                            if (googleBackupStatus != null) {
+                                Text(
+                                    googleBackupStatus!!,
+                                    fontSize = 11.sp,
+                                    color = ProBlue,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Respaldo automático", fontSize = 12.sp, color = NavyBlue)
+                                Switch(
+                                    checked = googleAutoBackupEnabled,
+                                    onCheckedChange = { viewModel.setGoogleAutoBackupEnabled(it) }
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        viewModel.performGoogleDriveBackup { success, msg ->
+                                            if (success) successMessage = msg else errorMessage = msg
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = ProBlue),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Respaldar ahora", fontSize = 11.sp)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        viewModel.restoreFromGoogleDrive { success, msg ->
+                                            if (success) successMessage = msg else errorMessage = msg
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF455A64)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Restaurar nube", fontSize = 11.sp)
+                                }
+                            }
+
+                            TextButton(
+                                onClick = { viewModel.setGoogleAccessToken(null) },
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) {
+                                Text("Cerrar sesión de Google", color = Color.Red, fontSize = 11.sp)
+                            }
+                        }
+
+                        if (isGoogleBackupInProgress) {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = ProBlue
+                            )
+                        }
+                    }
+                }
+
+                if (showGoogleLogin) {
+                    GoogleDriveLoginDialog(
+                        clientId = com.aistudio.unibuddy.qywvsp.ui.screens.GoogleDriveBackupManager.customClientId,
+                        onDismiss = { showGoogleLogin = false },
+                        onSuccess = { token ->
+                            viewModel.setGoogleAccessToken(token)
+                            showGoogleLogin = false
+                        }
+                    )
+                }
+
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.2f), thickness = 1.dp)
+
+                Text("Respaldo Manual (JSON alternativo)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = NavyBlue)
                 Text("Puedes exportar tus datos académicos (clases, notas, asistencias) para moverlos de dispositivo o reinstalar la app.", fontSize = 11.sp, color = SlateGray)
                 
                 Row(

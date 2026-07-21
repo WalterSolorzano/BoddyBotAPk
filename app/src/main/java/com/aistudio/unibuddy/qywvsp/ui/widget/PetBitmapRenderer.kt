@@ -83,7 +83,8 @@ object PetBitmapRenderer {
                         pose = pose,
                         accessory = accessory,
                         weatherState = weatherState,
-                        mainColor = color
+                        mainColor = color,
+                        isStatic = true
                     )
                 }
             }

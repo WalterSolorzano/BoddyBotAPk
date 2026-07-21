@@ -118,7 +118,7 @@ class NextClassHeroWidget : GlanceAppWidget() {
                     // Urgent Badge
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Image(
-                            provider = ImageProvider(R.drawable.ic_widget_event), 
+                            provider = ImageProvider(vectorToBitmap(context, R.drawable.ic_widget_event)), 
                             contentDescription = null, 
                             modifier = GlanceModifier.size(16.dp)
                         )
@@ -184,7 +184,7 @@ class StreakTrackerWidget : GlanceAppWidget() {
             Box(modifier = GlanceModifier.fillMaxSize().background(Color(0xFF2C3E50)).padding(16.dp).clickable(actionStartActivity<MainActivity>())) {
                 Column(modifier = GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Image(provider = ImageProvider(R.drawable.ic_widget_flame), contentDescription = null, modifier = GlanceModifier.size(20.dp))
+                        Image(provider = ImageProvider(vectorToBitmap(context, R.drawable.ic_widget_flame)), contentDescription = null, modifier = GlanceModifier.size(20.dp))
                         Spacer(modifier = GlanceModifier.width(6.dp))
                         Text("RACHA ACTIVA", style = TextStyle(color = ColorProvider(Color(0xFFF39C12)), fontSize = 10.sp, fontWeight = FontWeight.Bold))
                     }
@@ -228,7 +228,7 @@ class UpcomingAssessmentsWidget : GlanceAppWidget() {
                 Column(modifier = GlanceModifier.fillMaxSize()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Image(
-                            provider = ImageProvider(R.drawable.ic_widget_event), 
+                            provider = ImageProvider(vectorToBitmap(context, R.drawable.ic_widget_event)), 
                             contentDescription = null, 
                             modifier = GlanceModifier.size(16.dp)
                         )
@@ -350,4 +350,15 @@ class RefreshCommuteAction : ActionCallback {
         }
         QuickCommuteWidget().update(context, glanceId)
     }
+}
+
+fun vectorToBitmap(context: android.content.Context, drawableId: Int): android.graphics.Bitmap {
+    val drawable = androidx.core.content.ContextCompat.getDrawable(context, drawableId) ?: return android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
+    val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 100
+    val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 100
+    val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    drawable.setBounds(0, 0, canvas.width, canvas.height)
+    drawable.draw(canvas)
+    return bitmap
 }

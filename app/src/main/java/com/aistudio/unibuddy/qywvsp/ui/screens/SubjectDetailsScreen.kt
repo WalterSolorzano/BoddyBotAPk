@@ -22,6 +22,8 @@ import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
@@ -38,6 +40,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import com.aistudio.unibuddy.qywvsp.utils.CalendarExportHelper
 import androidx.compose.ui.platform.testTag
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.text.font.FontStyle
@@ -93,24 +96,24 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
 
     val maxAbs = subject.totalClasses - ceil(subject.totalClasses * (subject.requiredAttendancePercent / 100.0)).toInt()
     
-    val totalAbsCount = attendanceLogs.count { !it.isPresent }.coerceAtLeast(absences.size)
-    val totalPresCount = attendanceLogs.count { it.isPresent }
+    val totalAbsCount = attendanceLogs.count { !it.isPresent && !it.isCancelled }.coerceAtLeast(absences.size)
+    val totalPresCount = attendanceLogs.count { it.isPresent && !it.isCancelled }
     val totalSessionsHeld = totalPresCount + totalAbsCount
     val currentRate = if (totalSessionsHeld > 0) (totalPresCount.toDouble() / totalSessionsHeld * 100.0) else 100.0
     val remaining = maxAbs - totalAbsCount
 
     // Add session manual state
     var manualDateInput by remember { mutableStateOf("") }
-    var selectedStatusIsPresent by remember { mutableStateOf(true) } // true = Presente, false = Ausente
-    var filterTab by remember { mutableStateOf("Todo") } // "Todo", "Asistencias", "Faltas"
+    var selectedStatusType by remember { mutableStateOf("Asistió") } // "Asistió", "Faltó", "Canceló"
+    var filterTab by remember { mutableStateOf("Todo") } // "Todo", "Asistencias", "Faltas", "Canceladas"
     var activeDetailTab by remember { mutableStateOf("Asistencias") } // "Asistencias", "Tareas"
     var currentMonthCal by remember { mutableStateOf(Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1) }) }
 
     val mergedLogs = remember(attendanceLogs, absences) {
-        val list = attendanceLogs.map { IntegratedLogItem(id = it.id, date = it.date, isPresent = it.isPresent, isLegacy = false) }.toMutableList()
+        val list = attendanceLogs.map { IntegratedLogItem(id = it.id, date = it.date, isPresent = it.isPresent, isCancelled = it.isCancelled, isLegacy = false) }.toMutableList()
         absences.forEach { legacyAbs ->
-            if (attendanceLogs.none { !it.isPresent && it.date == legacyAbs.date }) {
-                list.add(IntegratedLogItem(id = legacyAbs.id, date = legacyAbs.date, isPresent = false, isLegacy = true))
+            if (attendanceLogs.none { !it.isPresent && !it.isCancelled && it.date == legacyAbs.date }) {
+                list.add(IntegratedLogItem(id = legacyAbs.id, date = legacyAbs.date, isPresent = false, isCancelled = false, isLegacy = true))
             }
         }
         list.sortByDescending { it.date }
@@ -119,8 +122,9 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
 
     val filteredLogs = remember(mergedLogs, filterTab) {
         when (filterTab) {
-            "Asistencias" -> mergedLogs.filter { it.isPresent }
-            "Faltas" -> mergedLogs.filter { !it.isPresent }
+            "Asistencias" -> mergedLogs.filter { it.isPresent && !it.isCancelled }
+            "Faltas" -> mergedLogs.filter { !it.isPresent && !it.isCancelled }
+            "Canceladas" -> mergedLogs.filter { it.isCancelled }
             else -> mergedLogs
         }
     }
@@ -152,6 +156,40 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
             }
             
             Row {
+                val context = LocalContext.current
+                IconButton(
+                    onClick = {
+                        if (subject.sessions.isEmpty()) {
+                            android.widget.Toast.makeText(context, "No hay clases programadas para agendar", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            var exportedCount = 0
+                            subject.sessions.forEach { session ->
+                                val timeStr = when (session.time) {
+                                    "M1" -> "08:00 - 10:00"
+                                    "M2" -> "10:00 - 12:00"
+                                    "M3" -> "12:00 - 14:00"
+                                    "T1" -> "14:00 - 16:00"
+                                    "T2" -> "16:00 - 18:00"
+                                    "T3" -> "18:00 - 20:00"
+                                    else -> session.time
+                                }
+                                CalendarExportHelper.exportClassToCalendar(
+                                    context = context,
+                                    subjectName = subject.name,
+                                    dayCode = session.day,
+                                    sessionTimeStr = timeStr
+                                )
+                                exportedCount++
+                            }
+                            if (exportedCount > 0) {
+                                android.widget.Toast.makeText(context, "Abriendo agenda para $exportedCount clases", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                ) {
+                    Icon(imageVector = Icons.Default.CalendarToday, contentDescription = "Agendar clases", tint = NavyBlue)
+                }
+
                 var showEditScheduleDialog by remember { mutableStateOf(false) }
                 IconButton(onClick = { showEditScheduleDialog = true }) {
                     Icon(imageVector = Icons.Default.DateRange, contentDescription = "Editar Horario", tint = NavyBlue)
@@ -372,6 +410,36 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    onClick = { 
+                        val newUrl = "https://picsum.photos/seed/${subject.name.replace(" ", "")}/400/200"
+                        viewModel.saveSetting("cover_url_${subject.id}", newUrl)
+                        //
+                        
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF10B981).copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "Generar Portada", tint = Color(0xFF10B981), modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Generar Portada con IA",
+                            color = Color(0xFF10B981),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // 2. Game-style Health Bar (Vidas de Faltas Restantes)
@@ -416,6 +484,55 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                         maxAbs = maxAbs,
                         heartSize = 22.dp
                     )
+                }
+
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 2.5. Battery of Grades
+                Text(
+                    text = "BATERÍA ACADÉMICA (Energía de Calificaciones)",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = NavyBlue,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White, RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.BatteryChargingFull, contentDescription = null, tint = if (pointsLost < 20.0) Color(0xFF10B981) else if (pointsLost < 30.0) Color(0xFFF59E0B) else Terracotta, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Energía Restante:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NavyBlue
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Has perdido ${String.format(java.util.Locale.US, "%.1f", pointsLost)} pts en el semestre",
+                            fontSize = 11.sp,
+                            color = SlateGray
+                        )
+                    }
+
+                    // Battery Indicator
+                    val maxPointsLostAllowed = 100.0 - 60.0 // Hardcoded to 60.0 for now
+                    val batteryRatio = (1f - (pointsLost / maxPointsLostAllowed).toFloat()).coerceIn(0f, 1f)
+                    
+                    Box(modifier = Modifier.width(60.dp).height(24.dp).background(Color(0xFFE2E8F0), RoundedCornerShape(4.dp)).border(1.dp, Color(0xFF94A3B8), RoundedCornerShape(4.dp)), contentAlignment = Alignment.CenterStart) {
+                        Box(modifier = Modifier.fillMaxWidth(batteryRatio).fillMaxHeight().background(if (batteryRatio > 0.5f) Color(0xFF10B981) else if (batteryRatio > 0.2f) Color(0xFFF59E0B) else Color(0xFFEF4444), RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp, topEnd = if (batteryRatio >= 0.99f) 4.dp else 0.dp, bottomEnd = if (batteryRatio >= 0.99f) 4.dp else 0.dp)))
+                    }
+                    Box(modifier = Modifier.width(4.dp).height(10.dp).background(Color(0xFF94A3B8), RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp)))
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -564,12 +681,22 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
 
         // Main Tab Switcher
         TabRow(
-            selectedTabIndex = if (activeDetailTab == "Asistencias") 0 else 1,
+            selectedTabIndex = when (activeDetailTab) {
+                "Asistencias" -> 0
+                "Tareas" -> 1
+                else -> 2
+            },
             containerColor = Color(0xFFF1F5F9),
             contentColor = NavyBlue,
             indicator = { tabPositions ->
                 TabRowDefaults.SecondaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[if (activeDetailTab == "Asistencias") 0 else 1]),
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[
+                        when (activeDetailTab) {
+                            "Asistencias" -> 0
+                            "Tareas" -> 1
+                            else -> 2
+                        }
+                    ]),
                     color = try { Color(android.graphics.Color.parseColor(subject.colorHex)) } catch(e: Exception) { DarkGreen }
                 )
             },
@@ -591,7 +718,17 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                 text = {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(imageVector = Icons.Default.List, contentDescription = null, modifier = Modifier.size(16.dp), tint = NavyBlue)
-                        Text("Tareas / Entregas", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyBlue)
+                        Text("Tareas", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyBlue)
+                    }
+                }
+            )
+            Tab(
+                selected = activeDetailTab == "QueLlevar",
+                onClick = { activeDetailTab = "QueLlevar" },
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp), tint = NavyBlue)
+                        Text("Qué llevar", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyBlue)
                     }
                 }
             )
@@ -882,18 +1019,19 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         val isJustified = !item.isPresent && item.date.lowercase().contains("justificada")
                                         val iconCol = when {
+                                            item.isCancelled -> Color.Gray
                                             item.isPresent -> DarkGreen
                                             isJustified -> Color(0xFFFBC02D)
                                             else -> Terracotta
                                         }
                                         Icon(
-                                            imageVector = if (item.isPresent) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                            imageVector = if (item.isCancelled) Icons.Default.Cancel else if (item.isPresent) Icons.Default.CheckCircle else Icons.Default.Warning,
                                             contentDescription = null,
                                             tint = iconCol
                                         )
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Text(
-                                            text = if (item.isPresent) "Asistió: ${item.date}" else "Falta registrada: ${item.date}",
+                                            text = if (item.isCancelled) "Clase cancelada: ${item.date}" else if (item.isPresent) "Asistió: ${item.date}" else "Falta registrada: ${item.date}",
                                             fontWeight = FontWeight.Bold,
                                             color = NavyBlue,
                                             fontSize = 13.sp
@@ -935,31 +1073,43 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
 
                         // Toggle status buttons
                         Row(
-                            modifier = Modifier.weight(1.8f),
+                            modifier = Modifier.weight(2f),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Button(
-                                onClick = { selectedStatusIsPresent = true },
+                                onClick = { selectedStatusType = "Asistió" },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (selectedStatusIsPresent) DarkGreen else SlateGray.copy(alpha = 0.1f)
+                                    containerColor = if (selectedStatusType == "Asistió") DarkGreen else SlateGray.copy(alpha = 0.1f)
                                 ),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.weight(1f).height(48.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp)
                             ) {
-                                Text("Asistió", color = if (selectedStatusIsPresent) Bone else NavyBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Asistió", color = if (selectedStatusType == "Asistió") Bone else NavyBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
 
                             Button(
-                                onClick = { selectedStatusIsPresent = false },
+                                onClick = { selectedStatusType = "Faltó" },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (!selectedStatusIsPresent) Terracotta else SlateGray.copy(alpha = 0.1f)
+                                    containerColor = if (selectedStatusType == "Faltó") Terracotta else SlateGray.copy(alpha = 0.1f)
                                 ),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.weight(1f).height(48.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp)
                             ) {
-                                Text("Faltó", color = if (!selectedStatusIsPresent) Bone else NavyBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Faltó", color = if (selectedStatusType == "Faltó") Bone else NavyBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = { selectedStatusType = "Canceló" },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (selectedStatusType == "Canceló") Color.Gray else SlateGray.copy(alpha = 0.1f)
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1.5f).height(48.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) {
+                                Text("Canceló", color = if (selectedStatusType == "Canceló") Bone else NavyBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -969,7 +1119,9 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                             val inputDate = manualDateInput.ifBlank {
                                 java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()).format(java.util.Date())
                             }
-                            viewModel.registerAttendanceLog(subject.id, selectedStatusIsPresent, inputDate)
+                            val isPresentVal = selectedStatusType == "Asistió"
+                            val isCancelledVal = selectedStatusType == "Canceló"
+                            viewModel.registerAttendanceLog(subject.id, isPresent = isPresentVal, isCancelled = isCancelledVal, dateStr = inputDate)
                             manualDateInput = ""
                         },
                         modifier = Modifier.fillMaxWidth().height(42.dp),
@@ -980,7 +1132,7 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                     }
                 }
             }
-        } else {
+        } else if (activeDetailTab == "Tareas") {
             // PLANIFICADOR DE TAREAS / TO-DO LIST
             val allTasks by viewModel.tasks.collectAsStateWithLifecycle(emptyList())
             val subjectTasks = remember(allTasks, subject.id) {
@@ -1098,6 +1250,23 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                                                 Text("Entrega: ${task.dueDate}", fontSize = 10.sp, color = SlateGray, fontWeight = FontWeight.Bold)
                                             }
                                         }
+                                    }
+                                }
+                                if (task.type == "Examen") {
+                                    val context = LocalContext.current
+                                    IconButton(
+                                        onClick = {
+                                            val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+                                            val fullDateStr = if (task.dueDate.split(" ").size < 3) "${task.dueDate} $currentYear" else task.dueDate
+                                            CalendarExportHelper.exportExamToCalendar(
+                                                context = context,
+                                                subjectName = subject.name,
+                                                examTitle = task.title,
+                                                dateStr = fullDateStr
+                                            )
+                                        }
+                                    ) {
+                                        Icon(imageVector = Icons.Default.CalendarToday, contentDescription = "Agendar examen", tint = DarkGreen, modifier = Modifier.size(18.dp))
                                     }
                                 }
                                 IconButton(onClick = { viewModel.deleteTask(task.id) }) {
@@ -1237,6 +1406,191 @@ fun SubjectDetailsScreen(viewModel: UniBuddyViewModel, subjectId: Int, onBack: (
                                 }
                                 IconButton(onClick = { viewModel.deleteTask(task.id) }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Eliminar tarea", tint = Terracotta.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // QUÉ LLEVAR CHECKLIST TAB
+            val allChecklistItems by viewModel.checklistItems.collectAsStateWithLifecycle(emptyList())
+            val subjectChecklistItems = remember(allChecklistItems, subject.id) {
+                allChecklistItems.filter { it.subjectId == subject.id }
+            }
+
+            var checklistItemTitleInput by remember { mutableStateOf("") }
+            var isExceptionItem by remember { mutableStateOf(false) }
+            var exceptionDateInput by remember { mutableStateOf("") }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Checklist de Materiales (Qué llevar)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = NavyBlue)
+                    Text("Registra los implementos, libros o materiales que debes llevar siempre o en una fecha específica.", fontSize = 12.sp, color = SlateGray)
+
+                    // Input form
+                    OutlinedTextField(
+                        value = checklistItemTitleInput,
+                        onValueChange = { checklistItemTitleInput = it },
+                        placeholder = { Text("Ej. Calculadora, Bata de Lab, Proyecto Impreso") },
+                        modifier = Modifier.fillMaxWidth().testTag("checklist_item_input")
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Checkbox(
+                            checked = isExceptionItem,
+                            onCheckedChange = { isExceptionItem = it },
+                            colors = CheckboxDefaults.colors(checkedColor = ProBlue)
+                        )
+                        Text("¿Llevar solo en una fecha específica?", fontSize = 13.sp, color = NavyBlue)
+                    }
+
+                    if (isExceptionItem) {
+                        OutlinedTextField(
+                            value = exceptionDateInput,
+                            onValueChange = { exceptionDateInput = it },
+                            placeholder = { Text("Fecha de excepción (Ej. 24 de Oct)") },
+                            modifier = Modifier.fillMaxWidth().testTag("checklist_date_input")
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            if (checklistItemTitleInput.isNotBlank()) {
+                                val date = if (isExceptionItem && exceptionDateInput.isNotBlank()) exceptionDateInput else null
+                                viewModel.addChecklistItem(subject.id, checklistItemTitleInput, date)
+                                checklistItemTitleInput = ""
+                                exceptionDateInput = ""
+                                isExceptionItem = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = ProBlue),
+                        modifier = Modifier.fillMaxWidth().testTag("add_checklist_button")
+                    ) {
+                        Text("Agregar Implemento")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Section 1: Recurring (Always carry)
+            val recurringItems = subjectChecklistItems.filter { it.date == null }
+            val specificDateItems = subjectChecklistItems.filter { it.date != null }
+
+            Text("IMPLEMENTOS PARA TODAS LAS CLASES", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = NavyBlue, letterSpacing = 0.5.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            if (recurringItems.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(12.dp)).padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No hay implementos fijos registrados para esta materia.", fontSize = 12.sp, color = SlateGray)
+                }
+            } else {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        recurringItems.forEach { item ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Checkbox(
+                                        checked = item.isCompleted,
+                                        onCheckedChange = { viewModel.toggleChecklistItem(item) },
+                                        colors = CheckboxDefaults.colors(checkedColor = ProBlue),
+                                        modifier = Modifier.testTag("checklist_check_${item.id}")
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = item.itemName,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (item.isCompleted) SlateGray else NavyBlue,
+                                        fontSize = 13.sp,
+                                        style = if (item.isCompleted) androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough) else androidx.compose.ui.text.TextStyle.Default
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { viewModel.deleteChecklistItem(item.id) },
+                                    modifier = Modifier.testTag("delete_checklist_${item.id}")
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = Terracotta.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Section 2: Specific Dates (Exceptions)
+            Text("LLEVAR EN FECHAS ESPECÍFICAS (EXCEPCIONES)", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = NavyBlue, letterSpacing = 0.5.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            if (specificDateItems.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(12.dp)).padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No hay implementos por fecha única registrados.", fontSize = 12.sp, color = SlateGray)
+                }
+            } else {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        specificDateItems.forEach { item ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Checkbox(
+                                        checked = item.isCompleted,
+                                        onCheckedChange = { viewModel.toggleChecklistItem(item) },
+                                        colors = CheckboxDefaults.colors(checkedColor = ProBlue),
+                                        modifier = Modifier.testTag("checklist_check_${item.id}")
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Column {
+                                        Text(
+                                            text = item.itemName,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (item.isCompleted) SlateGray else NavyBlue,
+                                            fontSize = 13.sp,
+                                            style = if (item.isCompleted) androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough) else androidx.compose.ui.text.TextStyle.Default
+                                        )
+                                        Text(
+                                            text = "Requerido para: ${item.date}",
+                                            fontSize = 11.sp,
+                                            color = ProBlue,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { viewModel.deleteChecklistItem(item.id) },
+                                    modifier = Modifier.testTag("delete_checklist_${item.id}")
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = Terracotta.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
                                 }
                             }
                         }

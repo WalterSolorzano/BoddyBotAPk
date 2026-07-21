@@ -100,13 +100,32 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel, onBack: (() -> Unit)? = nu
         if (onBack != null) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(onClick = { onBack() }) {
-                    Icon(androidx.compose.material.icons.Icons.Default.ArrowBack, contentDescription = "Back", tint = NavyBlue)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { onBack() }) {
+                        Icon(androidx.compose.material.icons.Icons.Default.ArrowBack, contentDescription = "Back", tint = NavyBlue)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Estadísticas del Semestre", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = NavyBlue)
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Estadísticas del Semestre", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = NavyBlue)
+                IconButton(
+                    onClick = {
+                        com.aistudio.unibuddy.qywvsp.utils.ShareHelper.shareAcademicHistoryPdf(
+                            context = context,
+                            subjects = subjects,
+                            assessments = assessments,
+                            attendanceLogs = attendanceLogs
+                        )
+                    }
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.PictureAsPdf,
+                        contentDescription = "Exportar PDF",
+                        tint = ProBlue
+                    )
+                }
             }
         }
         // Stats Cards Bento Grid
@@ -378,115 +397,6 @@ fun SemesterHistoryView(viewModel: UniBuddyViewModel, onBack: (() -> Unit)? = nu
             }
         }
 
-        // Grade Goals Calculator / GPA Predictor Card
-        val pendingExamsCount = remember(assessments, currentWeek) {
-            assessments.count {
-                val isC1 = it.name.contains("C1", ignoreCase = true) || it.name.contains("U1", ignoreCase = true)
-                val matchesPeriod = if (currentWeek <= 8) isC1 else !isC1
-                matchesPeriod && it.grade == null
-            }
-        }
-        if (pendingExamsCount > 0) {
-            val university by viewModel.userUniversity.collectAsStateWithLifecycle()
-            val passingGrade = if (university == "UAM" || university == "UCA" || university == "Keiser") 70.0f else 60.0f
-            var targetGpa by remember(passingGrade) { mutableFloatStateOf(maxOf(75.0f, passingGrade)) }
-            val requiredGrade = remember(targetGpa, gradedAssessments, pendingExamsCount) {
-                val totalCount = gradedAssessments.size + pendingExamsCount
-                val currentSum = gradedAssessments.sumOf { it.grade ?: 0.0 }
-                val neededSum = (targetGpa * totalCount) - currentSum
-                val reqAvg = neededSum / pendingExamsCount
-                reqAvg.coerceAtLeast(0.0)
-            }
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(2.dp, RoundedCornerShape(16.dp)),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(2.dp, ProBlue.copy(alpha = 0.5f)),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .background(Color(0xFFE3F2FD), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("", fontSize = 18.sp)
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text("Predictor de Metas Académicas", fontWeight = FontWeight.Bold, color = NavyBlue, fontSize = 14.sp)
-                            Text("Estima la nota requerida para tus próximos exámenes.", fontSize = 11.sp, color = SlateGray)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        text = "Tu Meta de Promedio: ${String.format("%.1f", targetGpa)}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = NavyBlue
-                    )
-
-                    Slider(
-                        value = targetGpa,
-                        onValueChange = { targetGpa = it },
-                        valueRange = passingGrade..100.0f,
-                        steps = (100f - passingGrade).toInt() - 1,
-                        colors = SliderDefaults.colors(
-                            thumbColor = ProBlue,
-                            activeTrackColor = ProBlue,
-                            inactiveTrackColor = Color(0xFFE2E8F0)
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Surface(
-                        color = when {
-                            requiredGrade <= passingGrade -> Color(0xFFE8F5E9)
-                            requiredGrade <= (passingGrade + 15f) -> Color(0xFFE3F2FD)
-                            requiredGrade <= 100.0 -> Color(0xFFFFF3E0)
-                            else -> Color(0xFFFFEBEE)
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = if (requiredGrade > 100.0) {
-                                    "Meta inalcanzable matemáticamente"
-                                } else {
-                                    "Nota promedio requerida: ${String.format("%.2f", requiredGrade)} / 100.0"
-                                },
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.sp,
-                                color = NavyBlue
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = when {
-                                    requiredGrade <= passingGrade -> "¡Muy fácil! Ya casi tienes asegurada la meta."
-                                    requiredGrade <= (passingGrade + 15f) -> "¡Totalmente alcanzable! Un repaso regular bastará."
-                                    requiredGrade <= 100.0 -> "¡Requerirá esfuerzo! Necesitas excelentes notas en tus exámenes."
-                                    else -> "Prácticamente imposible con tu promedio actual. Baja un poco tu meta."
-                                },
-                                fontSize = 11.sp,
-                                color = SlateGray,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
-        }
 
         // Export data box
         Card(

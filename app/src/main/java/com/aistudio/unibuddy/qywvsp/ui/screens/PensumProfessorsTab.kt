@@ -28,9 +28,10 @@ import com.aistudio.unibuddy.qywvsp.data.Professor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PensumProfessorsTab(history: List<AcademicRecordWithSubject>, professors: List<Professor>, onAddDummyProfessor: () -> Unit = {}) {
+fun PensumProfessorsTab(history: List<AcademicRecordWithSubject>, professors: List<Professor>, onAddProfessor: (String) -> Unit = {}) {
     var sortByRating by remember { mutableStateOf(false) }
     var selectedProfessor by remember { mutableStateOf<Professor?>(null) }
+    var showAddDialog by remember { mutableStateOf(false) }
     
     // Calculate average ratings for professors based on history (or use rating field if available)
     val profRatings = remember(history, professors) {
@@ -77,7 +78,7 @@ fun PensumProfessorsTab(history: List<AcademicRecordWithSubject>, professors: Li
                     Spacer(Modifier.width(4.dp))
                     Text(if (sortByRating) "Por Valoración" else "Alfabético")
                 }
-                IconButton(onClick = { onAddDummyProfessor() }) {
+                IconButton(onClick = { showAddDialog = true }) {
                     Icon(Icons.Default.Add, contentDescription = "Add Professor")
                 }
             }
@@ -167,6 +168,56 @@ fun PensumProfessorsTab(history: List<AcademicRecordWithSubject>, professors: Li
             }
         }
     }
+
+    if (showAddDialog) {
+        AddProfessorDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { onAddProfessor(it) }
+        )
+    }
+}
+
+@Composable
+fun AddProfessorDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Añadir Profesor", fontWeight = FontWeight.Bold, color = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Ingresa el nombre del profesor para registrarlo en tu biblioteca:", fontSize = 12.sp, color = Color.Gray)
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = { Text("Ej. Ing. Juan Pérez") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = com.aistudio.unibuddy.qywvsp.ui.theme.ProBlue,
+                        unfocusedBorderColor = Color.LightGray
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (name.isNotBlank()) {
+                        onConfirm(name)
+                        onDismiss()
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = com.aistudio.unibuddy.qywvsp.ui.theme.NavyBlue)
+            ) {
+                Text("Guardar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = Color.Gray)
+            }
+        }
+    )
 }
 
 @Composable

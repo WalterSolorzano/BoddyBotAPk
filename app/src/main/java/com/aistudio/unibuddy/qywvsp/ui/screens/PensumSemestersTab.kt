@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +35,8 @@ fun PensumSemestersTab(
     staticPensum: List<StaticPensumSubject>,
     history: List<AcademicRecordWithSubject>,
     professors: List<Professor>,
-    passingGrade: Double = 60.0
+    passingGrade: Double = 60.0,
+    viewModel: com.aistudio.unibuddy.qywvsp.ui.UniBuddyViewModel? = null
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -44,6 +47,12 @@ fun PensumSemestersTab(
     }
     
     var expandedSemester by remember { mutableStateOf<Int?>(null) }
+    
+    var selectedProfId by remember { mutableStateOf<Int?>(null) }
+    var expandedProfFilter by remember { mutableStateOf(false) }
+
+    var recordToEdit by remember { mutableStateOf<AcademicRecordWithSubject?>(null) }
+
     
     Column(
         modifier = Modifier
@@ -86,7 +95,23 @@ fun PensumSemestersTab(
             }
         }
         
-        Text("Progreso Semestral", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = NavyBlue)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Progreso Semestral", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = NavyBlue)
+            
+            Box {
+                TextButton(onClick = { expandedProfFilter = true }) {
+                    Icon(Icons.Default.FilterList, contentDescription = "Filtro")
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (selectedProfId == null) "Todos los Profesores" else professors.find { it.id == selectedProfId }?.name ?: "Filtrado")
+                }
+                DropdownMenu(expanded = expandedProfFilter, onDismissRequest = { expandedProfFilter = false }) {
+                    DropdownMenuItem(text = { Text("Todos los Profesores") }, onClick = { selectedProfId = null; expandedProfFilter = false })
+                    professors.forEach { p ->
+                        DropdownMenuItem(text = { Text(p.name) }, onClick = { selectedProfId = p.id; expandedProfFilter = false })
+                    }
+                }
+            }
+        }
         
         semGroups.forEach { (sem, subjects) ->
             val isExpanded = expandedSemester == sem
@@ -96,8 +121,10 @@ fun PensumSemestersTab(
                 subjects.any { 
                     it.code.equals(rec.subjectCode, ignoreCase = true) || 
                     it.name.equals(rec.subjectName, ignoreCase = true) 
-                }
+                } && (selectedProfId == null || rec.record.professorId == selectedProfId)
             }
+            if (semRecords.isEmpty() && selectedProfId != null) return@forEach // hide empty semesters when filtered
+
             val passedCount = semRecords.count { it.record.grade >= passingGrade }
             val avg = if (semRecords.isNotEmpty()) semRecords.map { it.record.grade }.average() else 0.0
             
@@ -166,6 +193,7 @@ fun PensumSemestersTab(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .clickable { if (matchRec != null) recordToEdit = matchRec }
                                         .padding(vertical = 4.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
@@ -202,6 +230,92 @@ fun PensumSemestersTab(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+    
+    recordToEdit?.let { rec ->
+        EditRecordProfessorDialog(
+            record = rec,
+            professors = professors,
+            onDismiss = { recordToEdit = null },
+            viewModel = viewModel
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditRecordProfessorDialog(
+    record: AcademicRecordWithSubject,
+    professors: List<Professor>,
+    onDismiss: () -> Unit,
+    viewModel: com.aistudio.unibuddy.qywvsp.ui.UniBuddyViewModel?
+) {
+    var expandedProf by remember { mutableStateOf(false) }
+    var selectedProfId by remember { mutableStateOf(record.record.professorId) }
+    
+    var showAddProf by remember { mutableStateOf(false) }
+    var newProfName by remember { mutableStateOf("") }
+    
+    var rating by remember { mutableStateOf(record.record.rating ?: 0) }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Card(modifier = Modifier.fillMaxWidth(0.95f).padding(16.dp), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Asignar Profesor a ${record.subjectName}", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NavyBlue)
+                
+                ExposedDropdownMenuBox(expanded = expandedProf, onExpandedChange = { expandedProf = it }) {
+                    OutlinedTextField(
+                        value = professors.find { it.id == selectedProfId }?.name ?: "Seleccionar profesor...",
+                        onValueChange = {}, readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedProf) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(expanded = expandedProf, onDismissRequest = { expandedProf = false }) {
+                        professors.forEach { p ->
+                            DropdownMenuItem(text = { Text(p.name) }, onClick = { selectedProfId = p.id; expandedProf = false })
+                        }
+                        Divider()
+                        DropdownMenuItem(
+                            text = { Text("Agregar nuevo...", color = ProBlue) },
+                            onClick = { expandedProf = false; showAddProf = true }
+                        )
+                    }
+                }
+                
+                if (showAddProf) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(value = newProfName, onValueChange = { newProfName = it }, label = { Text("Nombre del profesor") }, modifier = Modifier.weight(1f))
+                        IconButton(onClick = {
+                            if (newProfName.isNotBlank() && viewModel != null) {
+                                viewModel.addProfessor(newProfName) { id ->
+                                    selectedProfId = id
+                                    showAddProf = false
+                                }
+                            }
+                        }) { Icon(Icons.Default.Check, "Guardar", tint = ProBlue) }
+                    }
+                }
+                
+                Text("Valoración del Profesor (1-5 estrellas)", fontSize = 14.sp)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    (1..5).forEach { star ->
+                        IconButton(onClick = { rating = star }) {
+                            Icon(if (rating >= star) Icons.Filled.Star else androidx.compose.material.icons.Icons.Outlined.StarBorder, contentDescription = "Star", tint = Amber)
+                        }
+                    }
+                }
+                
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("Cancelar") }
+                    Button(onClick = {
+                        viewModel?.updateAcademicRecordProfessor(record.record.id, selectedProfId, if (rating > 0) rating else null)
+                        onDismiss()
+                    }, colors = ButtonDefaults.buttonColors(containerColor = NavyBlue)) {
+                        Text("Guardar")
                     }
                 }
             }

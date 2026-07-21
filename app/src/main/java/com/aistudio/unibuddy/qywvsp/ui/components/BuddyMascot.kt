@@ -31,7 +31,8 @@ fun BuddyMascot(
     pose: String = "idle", // "idle", "greeting", "working", "sleeping", "celebrating", "exam"
     accessory: String = "DEFAULT", // "DEFAULT", "none", "hat", "glasses", "scarf", "sunglasses"
     weatherState: String = "clear", // "clear", "rainy", "sunny", "night"
-    mainColor: Color = Color.Unspecified
+    mainColor: Color = Color.Unspecified,
+    isStatic: Boolean = false
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     
@@ -66,7 +67,7 @@ fun BuddyMascot(
         else -> 3f
     }
     
-    val bobOffset by infiniteTransition.animateFloat(
+    val animatedBobOffset by infiniteTransition.animateFloat(
         initialValue = -maxOffset,
         targetValue = maxOffset,
         animationSpec = infiniteRepeatable(
@@ -77,7 +78,7 @@ fun BuddyMascot(
     )
 
     // Blinking animation
-    val blinkProgress by infiniteTransition.animateFloat(
+    val animatedBlinkProgress by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -91,6 +92,9 @@ fun BuddyMascot(
         ),
         label = "blink"
     )
+
+    val bobOffset = if (isStatic) 0f else animatedBobOffset
+    val blinkProgress = if (isStatic) 0f else animatedBlinkProgress
 
     Box(
         modifier = modifier

@@ -76,4 +76,53 @@ object AmbientAudioEngine {
         } catch (e: Exception) {}
         audioTrack = null
     }
+
+    fun playCelebrationSound(context: android.content.Context) {
+        scope.launch {
+            try {
+                val db = com.aistudio.unibuddy.qywvsp.data.AppDatabase.getDatabase(context)
+                val repo = com.aistudio.unibuddy.qywvsp.data.UniBuddyRepository(db)
+                val soundEnabledStr = repo.getSetting("sound_effects_enabled") ?: "true"
+                if (soundEnabledStr != "true") return@launch
+
+                val sampleRate = 44100
+                // Chime: Two beautiful ascending notes (e.g. C5 followed by G5)
+                val note1Freq = 523.25 // C5
+                val note2Freq = 783.99 // G5
+                val durationMs = 300
+                
+                val numSamples = sampleRate * durationMs / 1000
+                val bufferSize = numSamples * 2
+                
+                val audioTrackTemp = AudioTrack(
+                    AudioManager.STREAM_MUSIC,
+                    sampleRate,
+                    AudioFormat.CHANNEL_OUT_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize,
+                    AudioTrack.MODE_STATIC
+                )
+                
+                val buffer = ShortArray(numSamples)
+                // Note 1
+                for (i in 0 until numSamples / 2) {
+                    val t = i.toDouble() / sampleRate
+                    // Sine wave with fade out
+                    val envelope = 1.0 - (i.toDouble() / (numSamples / 2))
+                    buffer[i] = (Math.sin(2 * Math.PI * note1Freq * t) * 8000 * envelope).toInt().toShort()
+                }
+                // Note 2
+                for (i in numSamples / 2 until numSamples) {
+                    val t = (i - numSamples / 2).toDouble() / sampleRate
+                    val envelope = 1.0 - ((i - numSamples / 2).toDouble() / (numSamples / 2))
+                    buffer[i] = (Math.sin(2 * Math.PI * note2Freq * t) * 10000 * envelope).toInt().toShort()
+                }
+                
+                audioTrackTemp.write(buffer, 0, buffer.size)
+                audioTrackTemp.play()
+                delay(durationMs.toLong() + 50)
+                audioTrackTemp.release()
+            } catch (e: Exception) {}
+        }
+    }
 }

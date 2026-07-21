@@ -40,7 +40,10 @@ fun determineNodeState(subjectCode: String, subjectName: String, history: List<A
 
     val records = history.filter { 
         it.subjectCode.equals(subjectCode, ignoreCase = true) || 
-        it.subjectName.equals(subjectName, ignoreCase = true) 
+        it.subjectName.equals(subjectName, ignoreCase = true) ||
+        // Fuzzy matching logic
+        it.subjectName.uppercase().contains(subjectName.uppercase()) ||
+        subjectName.uppercase().contains(it.subjectName.uppercase())
     }
     
     val passedRecords = records.filter { it.record.grade >= passingGrade }
@@ -81,10 +84,16 @@ fun PensumMapTab(
     passingGrade: Double = 60.0
 ) {
     val currentSem = remember(staticPensum, history) {
-        val passedCodes = history.filter { it.record.grade >= passingGrade }.map { it.subjectCode }.toSet()
-        val passedNames = history.filter { it.record.grade >= passingGrade }.map { it.subjectName.uppercase() }.toSet()
-        val unpassedSemesters = staticPensum.filter { 
-            it.code !in passedCodes && it.name.uppercase() !in passedNames 
+        val passedRecords = history.filter { it.record.grade >= passingGrade }
+        
+        val unpassedSemesters = staticPensum.filter { sps ->
+            val passed = passedRecords.any { 
+                it.subjectCode.equals(sps.code, ignoreCase = true) ||
+                it.subjectName.equals(sps.name, ignoreCase = true) ||
+                it.subjectName.uppercase().contains(sps.name.uppercase()) ||
+                sps.name.uppercase().contains(it.subjectName.uppercase())
+            }
+            !passed
         }.map { it.semester }
         unpassedSemesters.minOrNull() ?: 1
     }

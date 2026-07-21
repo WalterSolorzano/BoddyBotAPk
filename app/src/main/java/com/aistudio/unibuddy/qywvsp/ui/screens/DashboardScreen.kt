@@ -97,6 +97,24 @@ fun DashboardScreen(
     val tripElapsedSeconds by viewModel.tripElapsedSeconds.collectAsStateWithLifecycle()
     val semesterState by viewModel.semesterState.collectAsStateWithLifecycle()
     val buddyXp by viewModel.buddyXp.collectAsStateWithLifecycle()
+    val examSilenceTimeRemaining by viewModel.examSilenceTimeRemaining.collectAsStateWithLifecycle()
+    val smartSilenceEnabled by viewModel.smartSilenceEnabled.collectAsStateWithLifecycle()
+    val dailyCheckinStreak by viewModel.dailyCheckinStreak.collectAsStateWithLifecycle()
+    val lastCheckinDate by viewModel.lastCheckinDate.collectAsStateWithLifecycle()
+    val lastLocalTime by viewModel.lastBackupLocalTime.collectAsStateWithLifecycle()
+    val lastDriveTime by viewModel.lastBackupDriveTime.collectAsStateWithLifecycle()
+    val backupIntervalDays by viewModel.backupIntervalDays.collectAsStateWithLifecycle()
+
+    val showBackupWarning = remember(lastLocalTime, lastDriveTime, backupIntervalDays) {
+        if (backupIntervalDays == 0) {
+            false
+        } else {
+            val now = System.currentTimeMillis()
+            val intervalMs = backupIntervalDays.toLong() * 24L * 60L * 60L * 1000L
+            val localOverdue = lastLocalTime == 0L || (now - lastLocalTime > intervalMs)
+            localOverdue
+        }
+    }
     var isCelebrating by remember { mutableStateOf(false) }
     var showSalvavidasDialog by remember { mutableStateOf(false) }
 
@@ -207,6 +225,126 @@ fun DashboardScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // Backup Warning Banner
+        if (showBackupWarning) {
+            Card(
+                modifier = Modifier.fillMaxWidth().testTag("backup_warning_card"),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)), // Amber Light
+                border = BorderStroke(1.dp, Color(0xFFFDE68A)), // Amber Border
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = "Atención",
+                        tint = Color(0xFFD97706), // Amber Dark
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Respaldo Requerido",
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF92400E),
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        val daysSinceStr = if (lastLocalTime == 0L) "Nunca has realizado un respaldo." else {
+                            val days = (System.currentTimeMillis() - lastLocalTime) / (1000L * 60L * 60L * 24L)
+                            "Último respaldo hace $days días."
+                        }
+                        Text(
+                            text = "Por seguridad de tus datos, te recomendamos realizar una copia de seguridad en JSON. $daysSinceStr",
+                            color = Color(0xFFB45309),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // --- 0. Exam Silence Banner / Control ---
+        if (examSilenceTimeRemaining > 0L) {
+            val minutes = examSilenceTimeRemaining / 60
+            val seconds = examSilenceTimeRemaining % 60
+            Card(
+                modifier = Modifier.fillMaxWidth().testTag("exam_silence_banner"),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)), // Slate dark
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, Color(0xFF334155))
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Modo Silencio de Exámenes Activo",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "UniBuddy silenciado. Tiempo restante: ${String.format(Locale.US, "%02d:%02d", minutes, seconds)}",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp
+                        )
+                    }
+                    Button(
+                        onClick = { viewModel.stopExamSilence() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Terracotta),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Text("Desactivar", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        } else if (smartSilenceEnabled) {
+            Card(
+                modifier = Modifier.fillMaxWidth().testTag("exam_silence_inactive_banner"),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Modo Silencio de Exámenes disponible",
+                            fontWeight = FontWeight.Bold,
+                            color = NavyBlue,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Silencia UniBuddy por 2 horas durante tus evaluaciones.",
+                            color = SlateGray,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Button(
+                        onClick = { viewModel.startExamSilence(2 * 60 * 60) },
+                        colors = ButtonDefaults.buttonColors(containerColor = NavyBlue),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Text("Activar DND", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         // --- 1. OTA Update Banner ---
         updateInfo?.let { info ->
             val localCtx = androidx.compose.ui.platform.LocalContext.current
@@ -532,6 +670,57 @@ fun DashboardScreen(
                     color = if (semesterState != "Vacaciones" && calculatedStress > 50) Terracotta else DarkGreen,
                     fontWeight = FontWeight.SemiBold
                 )
+                
+                Spacer(modifier = Modifier.height(14.dp))
+                androidx.compose.material3.HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f), thickness = 1.dp, modifier = Modifier.fillMaxWidth(0.9f))
+                Spacer(modifier = Modifier.height(10.dp))
+                
+                val todayStr = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date()) }
+                val hasCheckedInToday = lastCheckinDate == todayStr
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Text(
+                            text = "Racha de Check-in",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SlateGray
+                        )
+                        Text(
+                            text = if (dailyCheckinStreak == 1) "1 día activo" else "$dailyCheckinStreak días activos",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Amber
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            val success = viewModel.performDailyCheckin()
+                            if (success) {
+                                android.widget.Toast.makeText(context, "¡Check-in registrado! +10 XP para Buddy", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                android.widget.Toast.makeText(context, "Ya hiciste check-in hoy. ¡Vuelve mañana!", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (hasCheckedInToday) Color.LightGray else DarkGreen
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp)
+                    ) {
+                        Text(
+                            text = if (hasCheckedInToday) "Al día" else "Hacer check-in",
+                            color = if (hasCheckedInToday) SlateGray else Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
         }
 

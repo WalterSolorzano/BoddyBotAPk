@@ -36,7 +36,10 @@ object UpdateManager {
 
     suspend fun checkForUpdates(): UpdateInfo? = withContext(Dispatchers.IO) {
         try {
-            val client = OkHttpClient()
+            val client = OkHttpClient.Builder()
+                .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
             val request = Request.Builder().url(UPDATE_JSON_URL).build()
             val response = client.newCall(request).execute()
             

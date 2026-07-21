@@ -127,13 +127,13 @@ class TamagotchiWidget : GlanceAppWidget() {
                             if (bitmap != null) {
                                 ImageProvider(bitmap)
                             } else {
-                                ImageProvider(R.drawable.buddy_tamagotchi_happy_avatar)
+                                ImageProvider(R.mipmap.ic_launcher)
                             }
                         } catch (e: Exception) {
-                            ImageProvider(R.drawable.buddy_tamagotchi_happy_avatar)
+                            ImageProvider(R.mipmap.ic_launcher)
                         }
                     } else {
-                        ImageProvider(R.drawable.buddy_tamagotchi_happy_avatar)
+                        ImageProvider(R.mipmap.ic_launcher)
                     }
 
                     Image(
@@ -150,10 +150,9 @@ class TamagotchiWidget : GlanceAppWidget() {
                         verticalAlignment = Alignment.Vertical.CenterVertically,
                         modifier = GlanceModifier.fillMaxWidth().padding(horizontal = 4.dp)
                     ) {
-                        Image(
-                            provider = ImageProvider(R.drawable.ic_widget_heart_full),
-                            contentDescription = "Heart Life Icon",
-                            modifier = GlanceModifier.size(14.dp)
+                        Text(
+                            text = "❤️",
+                            style = TextStyle(fontSize = 12.sp)
                         )
                         Spacer(modifier = GlanceModifier.width(6.dp))
                         

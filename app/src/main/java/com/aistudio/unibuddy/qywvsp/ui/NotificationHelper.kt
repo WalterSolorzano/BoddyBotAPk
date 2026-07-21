@@ -5,13 +5,17 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.aistudio.unibuddy.qywvsp.R
 
 object NotificationHelper {
     private const val CHANNEL_ID = "unibuddy_notifications_channel"
     private const val CHANNEL_NAME = "UniBuddy Canales Alertas"
     private const val CHANNEL_DESC = "Alertas de asistencia de UniBuddy"
+
+    var isSilenceModeActive: Boolean = false
 
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -27,6 +31,9 @@ object NotificationHelper {
     }
 
     fun sendNotification(context: Context, title: String, message: String) {
+        if (isSilenceModeActive) {
+            return
+        }
         // Enforce POST_NOTIFICATIONS check for Android 13 (Tiramisu) or above
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != 
@@ -35,16 +42,22 @@ object NotificationHelper {
             }
         }
 
+        val remoteViews = RemoteViews(context.packageName, R.layout.custom_notification).apply {
+            setTextViewText(R.id.notification_title, title)
+            setTextViewText(R.id.notification_message, message)
+            setImageViewResource(R.id.notification_icon, R.drawable.ic_widget_school)
+            setInt(R.id.notification_status_indicator, "setBackgroundColor", android.graphics.Color.parseColor("#10B981")) // Green/Bien
+        }
+
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(remoteViews)
+            .setCustomBigContentView(remoteViews)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setColor(android.graphics.Color.parseColor("#3B82F6")) // ProBlue
+            .setColor(android.graphics.Color.parseColor("#10B981"))
             .setAutoCancel(true)
-            .setLights(android.graphics.Color.parseColor("#3B82F6"), 1000, 1000)
 
         with(NotificationManagerCompat.from(context)) {
             try {
@@ -56,6 +69,9 @@ object NotificationHelper {
     }
 
     fun sendNextClassNotification(context: Context, subjectId: Int, destinationName: String, title: String, message: String, isCritical: Boolean = false) {
+        if (isSilenceModeActive) {
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         }
@@ -88,19 +104,25 @@ object NotificationHelper {
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
 
-        val colorHex = if (isCritical) "#BA1A1A" else "#F97316"
-        val mascotMessage = if (isCritical) "$message (ಠ_ಠ)" else "$message (•‿•)"
-        
+        val colorHex = if (isCritical) "#EF4444" else "#F59E0B" // Red/Crítico or Amber/Atención
+        val iconRes = if (isCritical) R.drawable.buddy_widget_lluvia else R.drawable.buddy_widget_soleado
+
+        val remoteViews = RemoteViews(context.packageName, R.layout.custom_notification).apply {
+            setTextViewText(R.id.notification_title, title)
+            setTextViewText(R.id.notification_message, message)
+            setImageViewResource(R.id.notification_icon, iconRes)
+            setInt(R.id.notification_status_indicator, "setBackgroundColor", android.graphics.Color.parseColor(colorHex))
+        }
+
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
-            .setContentTitle(title)
-            .setContentText(mascotMessage)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(mascotMessage))
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(remoteViews)
+            .setCustomBigContentView(remoteViews)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setColor(android.graphics.Color.parseColor(colorHex))
             .setAutoCancel(true)
-            .setLights(android.graphics.Color.parseColor(colorHex), 1000, 1000)
             .addAction(android.R.drawable.ic_menu_today, "Marcar Asistencia", attendPendingIntent)
             .addAction(android.R.drawable.ic_menu_send, "Avisar Retraso", latePendingIntent)
             

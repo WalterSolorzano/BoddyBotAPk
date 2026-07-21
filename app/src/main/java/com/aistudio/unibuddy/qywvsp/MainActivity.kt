@@ -1,5 +1,6 @@
 package com.aistudio.unibuddy.qywvsp
 
+import java.util.concurrent.TimeUnit
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { !viewModel.isInitialized.value }
         super.onCreate(savedInstanceState)
         FirebaseApp.initializeApp(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -66,6 +68,8 @@ class MainActivity : ComponentActivity() {
             viewModel.handleShortcutDestination(it)
         }
 
+        
+        
         setContent {
             val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
             MyApplicationTheme(darkTheme = isDarkMode) {

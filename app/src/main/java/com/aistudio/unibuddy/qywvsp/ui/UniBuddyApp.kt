@@ -132,6 +132,7 @@ fun StylizedMapBackground(modifier: Modifier = Modifier, isUserOnCampus: Boolean
 // Navigation screens
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object Onboarding : Screen("onboarding", "Onboarding", Icons.Default.PlayArrow)
+    object Tutorial : Screen("tutorial", "Tutorial", Icons.Default.PlayArrow)
     object Inicio : Screen("inicio", "Inicio", Icons.Rounded.Fort)
     object FocusMode : Screen("focus_mode", "Focus", Icons.Rounded.SportsEsports)
     object Asistencia : Screen("asistencia", "Asistencia", Icons.Rounded.LocalFireDepartment)
@@ -141,12 +142,18 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Config_Tab : Screen("configuracion_tab", "Mochila", Icons.Rounded.Backpack)
     object Pensum : Screen("pensum", "Progreso", Icons.Default.DateRange)
     object Stats : Screen("stats", "Estadísticas", Icons.Rounded.BarChart)
+    object Profile : Screen("profile", "Perfil y Personalización", Icons.Rounded.Face)
+    object Career : Screen("career", "Mi Carrera", Icons.Rounded.School)
+    object Routes : Screen("routes", "Rutas", Icons.Rounded.Explore)
+    object System : Screen("system", "Sistema", Icons.Rounded.Settings)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UniBuddyApp(viewModel: UniBuddyViewModel) {
     val isInitialized by viewModel.isInitialized.collectAsStateWithLifecycle()
     val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
+    val isTutorialCompleted by viewModel.isTutorialCompleted.collectAsStateWithLifecycle()
     
     if (!isInitialized) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -155,13 +162,34 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
         return
     }
 
-    var currentScreen by remember { mutableStateOf<Screen>(Screen.Inicio) }
+    var currentScreen by remember {
+        mutableStateOf<Screen>(
+            if (!isOnboardingCompleted) Screen.Onboarding
+            else if (!isTutorialCompleted) Screen.Tutorial
+            else Screen.Inicio
+        )
+    }
     
     // Auxiliary state to view subject details (Asistencia)
     var selectedSubjectIdForDetails by remember { mutableStateOf<Int?>(null) }
     // Auxiliary state to view assessment list for a subject (Notas)
     var selectedSubjectIdForGrades by remember { mutableStateOf<Int?>(null) }
     var selectedSubjectIdForTutor by remember { mutableStateOf<Int?>(null) }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var showConfetti by remember { mutableStateOf(false) }
+    var activeCelebration by remember { mutableStateOf<UniBuddyViewModel.CelebrationType?>(null) }
+    val pendingLateness by viewModel.pendingLateness.collectAsStateWithLifecycle()
+    var correctedLatenessTime by remember { mutableStateOf("") }
+    var isCorrectingLatenessTime by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.celebrationEvent.collect { type ->
+            activeCelebration = type
+            showConfetti = true
+            com.aistudio.unibuddy.qywvsp.ui.AmbientAudioEngine.playCelebrationSound(context)
+        }
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
@@ -181,10 +209,12 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
         }
     }
 
-    LaunchedEffect(isOnboardingCompleted) {
+    LaunchedEffect(isOnboardingCompleted, isTutorialCompleted) {
         if (!isOnboardingCompleted) {
             currentScreen = Screen.Onboarding
-        } else if (currentScreen == Screen.Onboarding) {
+        } else if (!isTutorialCompleted) {
+            currentScreen = Screen.Tutorial
+        } else if (currentScreen == Screen.Onboarding || currentScreen == Screen.Tutorial) {
             currentScreen = Screen.Inicio
         }
     }
@@ -192,7 +222,7 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
     val backHandlerEnabled = selectedSubjectIdForDetails != null || 
             selectedSubjectIdForGrades != null || 
             currentScreen == Screen.Pensum || 
-            (currentScreen != Screen.Inicio && currentScreen != Screen.Onboarding)
+            (currentScreen != Screen.Inicio && currentScreen != Screen.Onboarding && currentScreen != Screen.Tutorial)
 
     androidx.activity.compose.BackHandler(enabled = backHandlerEnabled) {
         when {
@@ -205,16 +235,45 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
             currentScreen == Screen.Pensum -> {
                 currentScreen = Screen.Config_Tab
             }
-            currentScreen != Screen.Inicio && currentScreen != Screen.Onboarding -> {
+            currentScreen != Screen.Inicio && currentScreen != Screen.Onboarding && currentScreen != Screen.Tutorial -> {
                 currentScreen = Screen.Inicio
             }
         }
     }
 
+    var showAddAssessmentDialog by remember { mutableStateOf(false) }
+    var showQuickAbsenceDialog by remember { mutableStateOf(false) }
+    var showQuickCancelDialog by remember { mutableStateOf(false) }
+    var showQuickActionSheet by remember { mutableStateOf(false) }
+
     Scaffold(
+        floatingActionButtonPosition = FabPosition.Center,
+        floatingActionButton = {
+            val hideBottomBarScreens = listOf(
+                Screen.Onboarding, Screen.Tutorial, Screen.Tutor, Screen.StudyPlan,
+                Screen.Profile, Screen.Career, Screen.Routes, Screen.System,
+                Screen.Stats, Screen.Pensum
+            )
+            if (currentScreen !in hideBottomBarScreens) {
+                FloatingActionButton(
+                    onClick = { showAddAssessmentDialog = true },
+                    containerColor = NavyBlue,
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    modifier = Modifier.offset(y = 36.dp)
+                ) {
+                    Icon(androidx.compose.material.icons.Icons.Default.Add, contentDescription = "Registrar Evaluación")
+                }
+            }
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            if (currentScreen != Screen.Onboarding) {
+            val hideBottomBarScreens = listOf(
+                Screen.Onboarding, Screen.Tutorial, Screen.Tutor, Screen.StudyPlan,
+                Screen.Profile, Screen.Career, Screen.Routes, Screen.System,
+                Screen.Stats, Screen.Pensum
+            )
+            if (currentScreen !in hideBottomBarScreens) {
                 NavigationBar(
                     containerColor = Color(0xFFF0F4F8),
                     modifier = Modifier.shadow(8.dp)
@@ -274,6 +333,13 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
                             viewModel = viewModel,
                             onFinished = {
                                 viewModel.updateOnboardingStatus(true)
+                            }
+                        )
+                    }
+                    Screen.Tutorial -> {
+                        com.aistudio.unibuddy.qywvsp.ui.screens.TutorialScreen(
+                            onFinish = {
+                                viewModel.updateTutorialStatus(true)
                                 currentScreen = Screen.Inicio
                             }
                         )
@@ -394,10 +460,24 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
                     Screen.Config_Tab -> {
                         SettingsScreen(
                             viewModel = viewModel,
-                            onNavigateToPensum = {
-                                currentScreen = Screen.Pensum
-                            }
+                            onNavigateToProfile = { currentScreen = Screen.Profile },
+                            onNavigateToCareer = { currentScreen = Screen.Career },
+                            onNavigateToRoutes = { currentScreen = Screen.Routes },
+                            onNavigateToSystem = { currentScreen = Screen.System },
+                            onNavigateToTutorial = { currentScreen = Screen.Tutorial }
                         )
+                    }
+                    Screen.Profile -> {
+                        ProfileScreen(viewModel = viewModel, onBack = { currentScreen = Screen.Config_Tab })
+                    }
+                    Screen.Career -> {
+                        CareerScreen(viewModel = viewModel, onBack = { currentScreen = Screen.Config_Tab })
+                    }
+                    Screen.Routes -> {
+                        RoutesScreen(viewModel = viewModel, onBack = { currentScreen = Screen.Config_Tab })
+                    }
+                    Screen.System -> {
+                        SystemScreen(viewModel = viewModel, onBack = { currentScreen = Screen.Config_Tab })
                     }
                     Screen.Stats -> {
                         SemesterHistoryView(viewModel = viewModel, onBack = { currentScreen = Screen.Inicio })
@@ -411,6 +491,190 @@ fun UniBuddyApp(viewModel: UniBuddyViewModel) {
                 }
             }
         }
+    }
+    
+
+    val showSeasonRecap by viewModel.showSeasonRecap.collectAsStateWithLifecycle()
+    if (showSeasonRecap != null) {
+        com.aistudio.unibuddy.qywvsp.ui.screens.SeasonRecapOverlay(
+            recap = showSeasonRecap!!,
+            onDismiss = { viewModel.dismissSeasonRecap() }
+        )
+    }
+
+    if (showQuickActionSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showQuickActionSheet = false },
+            sheetState = sheetState,
+            containerColor = Color.White
+        ) {
+            Column(modifier = Modifier.padding(16.dp).padding(bottom = 32.dp)) {
+                Text("¿Qué deseas registrar?", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = NavyBlue, modifier = Modifier.padding(bottom = 16.dp))
+                
+                ListItem(
+                    headlineContent = { Text("Registrar Evaluación", fontWeight = FontWeight.Bold) },
+                    supportingContent = { Text("Guarda una nota nueva para tus materias") },
+                    leadingContent = { Icon(Icons.Default.Assignment, contentDescription = null, tint = ProBlue) },
+                    modifier = Modifier.clickable {
+                        showQuickActionSheet = false
+                        showAddAssessmentDialog = true
+                    }
+                )
+                
+                ListItem(
+                    headlineContent = { Text("Marcar Falta (Ausencia)", fontWeight = FontWeight.Bold) },
+                    supportingContent = { Text("Resta una vida/corazón en una de tus materias") },
+                    leadingContent = { Icon(Icons.Default.PersonOff, contentDescription = null, tint = Terracotta) },
+                    modifier = Modifier.clickable {
+                        showQuickActionSheet = false
+                        showQuickAbsenceDialog = true
+                    }
+                )
+                
+                ListItem(
+                    headlineContent = { Text("Registrar Clase Cancelada", fontWeight = FontWeight.Bold) },
+                    supportingContent = { Text("La clase no se impartió. No afecta tus vidas/corazones") },
+                    leadingContent = { Icon(Icons.Default.Cancel, contentDescription = null, tint = Color.Gray) },
+                    modifier = Modifier.clickable {
+                        showQuickActionSheet = false
+                        showQuickCancelDialog = true
+                    }
+                )
+            }
+        }
+    }
+
+
+    if (showQuickAbsenceDialog) {
+        val activeSubjects by viewModel.subjects.collectAsState(initial = emptyList())
+        com.aistudio.unibuddy.qywvsp.ui.screens.QuickAbsenceDialog(
+            viewModel = viewModel,
+            onDismiss = { showQuickAbsenceDialog = false },
+            activeSubjects = activeSubjects
+        )
+    }
+
+    if (showQuickCancelDialog) {
+        val activeSubjects by viewModel.subjects.collectAsState(initial = emptyList())
+        com.aistudio.unibuddy.qywvsp.ui.screens.QuickCancelDialog(
+            viewModel = viewModel,
+            onDismiss = { showQuickCancelDialog = false },
+            activeSubjects = activeSubjects
+        )
+    }
+
+    if (showAddAssessmentDialog) {
+        val activeSubjects by viewModel.subjects.collectAsState(initial = emptyList())
+        com.aistudio.unibuddy.qywvsp.ui.screens.QuickAssessmentDialog(
+            viewModel = viewModel,
+            onDismiss = { showAddAssessmentDialog = false },
+            activeSubjects = activeSubjects
+        )
+    }
+
+    // Confetti overlay
+    if (showConfetti) {
+        ConfettiOverlay(onFinished = { showConfetti = false })
+    }
+
+    // Level-up or Badge-unlock celebration dialog
+    if (activeCelebration != null) {
+        AlertDialog(
+            onDismissRequest = { activeCelebration = null },
+            title = {
+                Text(
+                    text = if (activeCelebration == UniBuddyViewModel.CelebrationType.LEVEL_UP) "¡Subiste de Nivel!" else "¡Nueva Insignia Desbloqueada!",
+                    fontWeight = FontWeight.Bold,
+                    color = NavyBlue
+                )
+            },
+            text = {
+                Text(
+                    text = if (activeCelebration == UniBuddyViewModel.CelebrationType.LEVEL_UP) {
+                        "Tu mascota de estudio ha acumulado suficiente experiencia para subir de nivel. ¡Sigue así, asistiendo y completando tus pendientes!"
+                    } else {
+                        "Felicidades por tu dedicación y esfuerzo constante. Se ha desbloqueado una nueva insignia para tu perfil."
+                    },
+                    color = NavyBlue
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { activeCelebration = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = ProBlue)
+                ) {
+                    Text("¡Excelente!")
+                }
+            }
+        )
+    }
+
+    // Pending lateness prompt dialog
+    if (pendingLateness != null) {
+        AlertDialog(
+            onDismissRequest = { /* forced action, no dismiss outside buttons */ },
+            title = { Text("Llegada Tarde Detectada", fontWeight = FontWeight.Bold, color = NavyBlue) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Detectamos tu llegada al campus para la materia '${pendingLateness!!.subjectName}'. El horario de inicio era a las ${pendingLateness!!.startTime}, y llegaste a las ${pendingLateness!!.arrivalTime}.",
+                        color = NavyBlue
+                    )
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Checkbox(
+                            checked = isCorrectingLatenessTime,
+                            onCheckedChange = { 
+                                isCorrectingLatenessTime = it 
+                                if (it) {
+                                    correctedLatenessTime = pendingLateness!!.arrivalTime
+                                }
+                            },
+                            colors = CheckboxDefaults.colors(checkedColor = ProBlue)
+                        )
+                        Text("Corregir hora manualmente", fontSize = 13.sp, color = NavyBlue)
+                    }
+
+                    if (isCorrectingLatenessTime) {
+                        OutlinedTextField(
+                            value = correctedLatenessTime,
+                            onValueChange = { correctedLatenessTime = it },
+                            placeholder = { Text("Ej. 08:15") },
+                            label = { Text("Hora corregida") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val corrected = if (isCorrectingLatenessTime && correctedLatenessTime.isNotBlank()) correctedLatenessTime else null
+                        viewModel.confirmLateness(pendingLateness!!, corrected)
+                        isCorrectingLatenessTime = false
+                        correctedLatenessTime = ""
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ProBlue)
+                ) {
+                    Text("Confirmar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        viewModel.discardLateness() 
+                        isCorrectingLatenessTime = false
+                        correctedLatenessTime = ""
+                    }
+                ) {
+                    Text("Descartar", color = Color.Gray)
+                }
+            }
+        )
     }
 }
 
@@ -1869,7 +2133,7 @@ fun AsistenciaOverviewScreen(viewModel: UniBuddyViewModel, onSubjectClick: (Int)
     }
 }
 
-data class IntegratedLogItem(val id: Int, val date: String, val isPresent: Boolean, val isLegacy: Boolean)
+data class IntegratedLogItem(val id: Int, val date: String, val isPresent: Boolean, val isCancelled: Boolean = false, val isLegacy: Boolean)
 
 // 5. NOTAS (GRADES OVERVIEW SCREEN)
 @Composable
@@ -3672,3 +3936,61 @@ fun AdvancedGradesAnalytics(
         confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } }
     )
 }
+
+@Composable
+fun ConfettiOverlay(onFinished: () -> Unit) {
+    val particles = remember {
+        List(80) {
+            ConfettiParticle(
+                x = (0..1000).random().toFloat() / 1000f,
+                y = -((0..500).random().toFloat() / 1000f),
+                speedY = (5..15).random().toFloat() / 1000f,
+                speedX = (-3..3).random().toFloat() / 2000f,
+                color = listOf(
+                    Color(0xFF4CAF50), // Mint Green
+                    Color(0xFFFFC107), // Amber
+                    Color(0xFF2196F3), // Pro Blue
+                    Color(0xFFE91E63), // Pink
+                    Color(0xFF9C27B0)  // Purple
+                ).random(),
+                size = (8..18).random().dp
+            )
+        }
+    }
+
+    var ticks by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        // Run confetti animation for 3 seconds (approx 150 frames at 20ms)
+        for (i in 0..150) {
+            kotlinx.coroutines.delay(20)
+            ticks++
+        }
+        onFinished()
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+            particles.forEach { p ->
+                val currentY = (p.y + p.speedY * ticks) * size.height
+                val currentX = (p.x + p.speedX * ticks) * size.width
+                
+                if (currentY in 0f..size.height && currentX in 0f..size.width) {
+                    drawRect(
+                        color = p.color,
+                        topLeft = androidx.compose.ui.geometry.Offset(currentX, currentY),
+                        size = androidx.compose.ui.geometry.Size(p.size.toPx(), p.size.toPx())
+                    )
+                }
+            }
+        }
+    }
+}
+
+data class ConfettiParticle(
+    val x: Float,
+    val y: Float,
+    val speedY: Float,
+    val speedX: Float,
+    val color: Color,
+    val size: androidx.compose.ui.unit.Dp
+)
